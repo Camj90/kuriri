@@ -1,7 +1,7 @@
 {
-  "name": "Kuriri está aburrido",
+  "name": "Kuriri aburrido en el espacio",
   "short_name": "Kuriri",
-  "description": "Juego de un dedo: haz girar a Kuriri entre dos órbitas, junta chispas y esquiva los arcos rojos.",
+  "description": "Juego de un dedo: Kuriri sueña que orbita un agujero negro. Junta chispas y no caigas al centro.",
   "lang": "es",
   "start_url": "./",
   "scope": "./",

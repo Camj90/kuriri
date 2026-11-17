@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<!-- Genera vista-previa.png (1200x630) para WhatsApp: abrir con viewport 1200x630 y sacar captura. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@800&family=Inter:wght@700&display=swap">
+<style>
+html,body{margin:0;width:1200px;height:630px;overflow:hidden;background:#070a14}
+canvas{position:absolute;inset:0}
+.t{position:absolute;left:600px;top:150px;width:560px;font-family:Orbitron,sans-serif;font-weight:800}
+.t .a{font-size:110px;line-height:1;background:linear-gradient(90deg,#3de0ff,#b46bff);-webkit-background-clip:text;color:transparent}
+.t .b{font-size:46px;line-height:1.15;color:#b46bff;margin-top:10px}
+.t .c{font:700 30px Inter,sans-serif;color:#e9ecff;margin-top:34px}
+.t .d{font:700 30px Inter,sans-serif;color:#ffd54a;margin-top:6px}
+</style></head><body>
+<canvas id="c" width="1200" height="630"></canvas>
+<div class="t"><div class="a">Kuriri</div><div class="b">aburrido en<br>el espacio</div>
+<div class="c">No caigas al agujero negro.</div><div class="d">¿Cuántas chispas juntas tú?</div></div>
+<script>
+const x = document.getElementById('c').getContext('2d'), cx = 300, cy = 315, RS = 34, T = Math.PI * 2;
+const az = i => { const v = Math.sin(i * 12.9898) * 43758.5453; return v - Math.floor(v); };
+let g = x.createRadialGradient(cx, cy, 0, cx, cy, 700); g.addColorStop(0, '#10162b'); g.addColorStop(1, '#070a14');
+x.fillStyle = g; x.fillRect(0, 0, 1200, 630);
+for (let i = 0; i < 160; i++) { x.globalAlpha = 0.2 + az(i + 3) * 0.6; x.fillStyle = '#e9ecff'; x.fillRect(az(i) * 1200, az(i + 99) * 630, 1.6, 1.6); }
+x.globalAlpha = 1;
+g = x.createRadialGradient(cx, cy, RS * 0.95, cx, cy, RS * 5.5);
+g.addColorStop(0, 'rgba(255,214,150,0.95)'); g.addColorStop(0.12, 'rgba(255,158,61,0.6)');
+g.addColorStop(0.45, 'rgba(190,70,120,0.2)'); g.addColorStop(1, 'rgba(7,10,20,0)');
+x.fillStyle = g; x.beginPath(); x.arc(cx, cy, RS * 5.5, 0, T); x.fill();
+const arco = (r, a0, a1, c, w, al, b = 0) => { x.save(); x.globalAlpha = al; x.strokeStyle = c; x.lineWidth = w; x.lineCap = 'round';
+  if (b) { x.shadowColor = c; x.shadowBlur = b; } x.beginPath(); x.arc(cx, cy, r, a0, a1); x.stroke(); x.restore(); };
+for (let i = 0; i < 6; i++) { const r = RS * (1.35 + i * 0.42), a0 = i * 1.7; arco(r, a0, a0 + 1.1, '#ff9e3d', 3 - i * 0.3, 0.6 - i * 0.07); arco(r, a0 + 3.14, a0 + 3.9, '#ff9e3d', 2, 0.35 - i * 0.04); }
+arco(RS * 1.12, 0, T, '#ffe2b0', 3, 0.95, 18);
+x.fillStyle = '#000'; x.beginPath(); x.arc(cx, cy, RS, 0, T); x.fill();
+arco(150, 0, T, '#3de0ff', 5, 0.85, 14); arco(240, 0, T, '#b46bff', 5, 0.6);
+arco(240, -0.55, -0.15, '#ff3d6e', 16, 1, 18);
+// chispa
+x.save(); x.translate(cx + Math.cos(2.3) * 150, cy + Math.sin(2.3) * 150); x.rotate(0.4); x.fillStyle = '#ffd54a'; x.shadowColor = '#ffd54a'; x.shadowBlur = 18;
+x.beginPath(); x.moveTo(0, -14); x.lineTo(10, 0); x.lineTo(0, 14); x.lineTo(-10, 0); x.closePath(); x.fill(); x.restore();
+// Kuriri con estela
+const ka = -0.95, kx = cx + Math.cos(ka) * 150, ky = cy + Math.sin(ka) * 150;
+for (let i = 1; i <= 10; i++) { const a = ka - i * 0.07; x.globalAlpha = 0.5 - i * 0.045; x.fillStyle = '#3de0ff';
+  x.beginPath(); x.arc(cx + Math.cos(a) * 150, cy + Math.sin(a) * 150, 14 - i, 0, T); x.fill(); }
+x.globalAlpha = 1; x.save(); x.shadowColor = '#3de0ff'; x.shadowBlur = 30; x.fillStyle = '#3de0ff'; x.beginPath(); x.arc(kx, ky, 34, 0, T); x.fill(); x.restore();
+for (const s of [-1, 1]) { x.fillStyle = '#e9ecff'; x.beginPath(); x.arc(kx + s * 12, ky - 6, 8, 0, T); x.fill();
+  x.fillStyle = '#1a1f3a'; x.beginPath(); x.arc(kx + s * 12 + 2, ky - 5, 3.6, 0, T); x.fill(); }
+</script></body></html>

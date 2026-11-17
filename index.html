@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Kuriri está aburrido</title>
+<title>Kuriri aburrido en el espacio</title>
 <meta name="description" content="Juego de un dedo: Kuriri orbita un agujero negro y cae hacia él sin llegar nunca. Junta chispas y esquiva los arcos rojos.">
 <meta name="theme-color" content="#070a14">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -11,9 +11,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Kuriri">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Kuriri está aburrido">
+<meta property="og:title" content="Kuriri aburrido en el espacio">
 <meta property="og:description" content="Juego de un dedo: Kuriri cae a un agujero negro sin llegar nunca. Junta chispas, no te hagas espagueti y entra al Top 5.">
-<meta property="og:image" content="https://camj90.github.io/kuriri/vista-previa.png">
+<meta property="og:image" content="https://camj90.github.io/kuriri/vista-previa.png?v=2">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:url" content="https://camj90.github.io/kuriri/">
@@ -73,6 +73,20 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 .top li.tu{background:rgba(255,213,74,.14);box-shadow:inset 0 0 0 1px rgba(255,213,74,.55)}
 .top li.vacio{display:block;color:var(--dim);font-size:14px}
 .top .estado{margin:0;font-size:12px;color:var(--dim)}
+/* intro: texto abajo, botón para saltar arriba; el HUD se esconde mientras dura */
+#intro{position:fixed;inset:0;pointer-events:none}
+#introTxt{position:fixed;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));
+  bottom:calc(env(safe-area-inset-bottom,0px) + 48px);margin:0 auto;max-width:420px;text-align:center;
+  font:600 18px/1.45 var(--body);color:var(--ink);text-wrap:balance;text-shadow:0 2px 14px #000,0 0 4px #000}
+#introTxt.entra{animation:entra .6s ease-out}
+@keyframes entra{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:none}}
+#saltar{position:fixed;top:calc(env(safe-area-inset-top,0px) + 14px);right:max(16px,env(safe-area-inset-right,0px));pointer-events:auto;
+  font:800 12px var(--display);letter-spacing:.14em;color:var(--ink);background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:10px 16px;cursor:pointer}
+#saltar:focus-visible,.link:focus-visible{outline:2px solid var(--inner);outline-offset:2px}
+body.en-intro .hud{visibility:hidden}
+.link{justify-self:center;background:none;border:0;color:var(--dim);font:600 14px var(--body);text-decoration:underline;
+  text-underline-offset:3px;padding:6px 10px;cursor:pointer}
 *{box-sizing:border-box}html,body{margin:0}[hidden]{display:none!important}
 :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 </style>
@@ -87,15 +101,21 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 </div>
 <div id="panel">
   <div class="caja">
-    <h1>Kuriri está aburrido</h1>
+    <h1>Kuriri aburrido en el espacio</h1>
     <div class="res" id="res" hidden><span class="big" id="final">0</span>chispas · récord <span id="finalRecord">0</span></div>
     <p id="msg">Kuriri orbita un agujero negro y cae hacia él, cada vez más lento, sin llegar nunca. <b>Toca la pantalla</b> para saltar entre la órbita interior y la exterior. Junta chispas y esquiva los arcos rojos: si chocas, Kuriri cae al centro y se estira como espagueti.</p>
     <div class="leyenda"><span><i style="background:var(--spark)"></i>chispa</span><span><i style="background:var(--danger)"></i>peligro</span></div>
     <div class="campo"><label for="nombre">Tu nombre de jugador</label>
       <input id="nombre" type="text" maxlength="12" autocomplete="nickname" placeholder="Escribe tu nombre" enterkeyhint="go"></div>
     <button id="jugar" type="button">JUGAR</button>
+    <button id="verIntro" class="link" type="button">Ver la intro</button>
     <div class="top"><h2>Top 5</h2><ol id="top"></ol><p class="estado" id="estadoTop"></p></div>
   </div>
+</div>
+
+<div id="intro" hidden>
+  <p id="introTxt" aria-live="polite"></p>
+  <button id="saltar" type="button">SALTAR ›</button>
 </div>
 
 <script>
@@ -134,6 +154,8 @@ addEventListener('resize', ajustar); ajustar();
 // únicamente marcas que superan la anterior del mismo jugador.
 const SB_URL = 'https://aiemzudvhrueskkxlgmf.supabase.co/rest/v1';
 const SB_KEY = 'sb_publishable_BgbW__E1u_GCmoDJEENWIA_LlORf1rE';
+// Con ?prueba en la dirección no se toca el ranking real (para probar el juego sin ensuciarlo).
+const PRUEBA = new URLSearchParams(location.search).has('prueba');
 const leer = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
 const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 const clave = n => n.trim().toLocaleLowerCase('es');
@@ -182,6 +204,7 @@ function pintarTop() {
 }
 
 async function cargarTop() {
+  if (PRUEBA) { pintarTop(); return; }
   try {
     const r = await fetch(`${SB_URL}/marcas?select=nombre,puntos,fecha&order=puntos.desc,fecha.asc&limit=5`,
                           {headers: {apikey: SB_KEY}, cache: 'no-store'});
@@ -194,6 +217,7 @@ async function cargarTop() {
 
 // Sube la mejor marca local de ese jugador; el servidor la ignora si no supera la que ya tiene.
 async function subirMarca(nombre) {
+  if (PRUEBA) return;
   const mia = locales.find(e => clave(e.n) === clave(nombre));
   if (!mia) return;
   try {
@@ -259,17 +283,19 @@ const posJugador = () => ({x: cx + Math.cos(s.a) * s.pr, y: cy + Math.sin(s.a) *
 
 // ---------- entrada ----------
 function empezar() {
-  if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   nuevo(); modo = 'juego';
   $('panel').hidden = true; $('puntos').textContent = '0';
   beep(440, 0.12, 'triangle', 0.1, 880);
 }
-function intentarEmpezar() {
-  if (modo === 'juego' || performance.now() - muertoEn < 650) return;
+function intentarEmpezar(conIntro = false) {
+  if (modo === 'juego' || modo === 'intro' || performance.now() - muertoEn < 650) return;
+  if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   $('nombre').blur(); guardar('kuriri-nombre', $('nombre').value.trim());
-  empezar();
+  // La primera vez (o con «Ver la intro») se cuenta el sueño de Kuriri y luego parte el juego.
+  if (conIntro || !leer('kuriri-intro', 0)) empezarIntro(); else empezar();
 }
 function tocar(e) {
+  if (modo === 'intro') { if (e && e.target.id !== 'saltar') { e.preventDefault(); siguienteEscena(); } return; }
   if (modo !== 'juego') return;            // fuera del juego, los toques son del panel (nombre y botón)
   if (e) e.preventDefault();
   {
@@ -282,7 +308,7 @@ function tocar(e) {
 addEventListener('pointerdown', tocar, {passive: false});
 addEventListener('keydown', e => {
   if (e.code !== 'Space' && e.code !== 'Enter') return;
-  if (modo === 'juego') tocar(e);
+  if (modo === 'juego' || modo === 'intro') tocar(e);
   else if (e.code === 'Enter' || e.target.id !== 'nombre') { e.preventDefault(); intentarEmpezar(); }
 });
 
@@ -395,6 +421,7 @@ function circulo(x, y, r, color, alfa = 1, brillo = 0) {
 }
 
 function dibujar(tReal) {
+  if (intro) { dibujarIntro(tReal); return; }
   ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
   const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
   g.addColorStop(0, C.bg2); g.addColorStop(1, C.bg);
@@ -507,18 +534,187 @@ function dibujarAgujero(t) {
   circulo(cx, cy, RS, '#000', 1);
 }
 
+// ---------- intro: el sueño de Kuriri ----------
+const ESCENAS = [
+  {hasta: 3.6,  txt: 'Kuriri es psicólogo de selección de personal. Hoy ya revisó 148 currículums…'},
+  {hasta: 7.0,  txt: '…y se quedó dormido encima del laptop.'},
+  {hasta: 9.6,  txt: 'Entonces soñó que viajaba al espacio.'},
+  {hasta: 13.4, txt: 'Allí orbita un agujero negro. Mientras no caiga al centro, Kuriri se mantiene entretenido.'},
+];
+const FIN_INTRO = ESCENAS[ESCENAS.length - 1].hasta;
+let intro = null;
+function empezarIntro() {
+  intro = {t: 0, escena: -1}; modo = 'intro'; s = null;
+  $('panel').hidden = true; $('intro').hidden = false; document.body.classList.add('en-intro');
+}
+function terminarIntro() {
+  if (!intro) return;
+  intro = null; $('intro').hidden = true; document.body.classList.remove('en-intro');
+  guardar('kuriri-intro', 1);
+  empezar();
+}
+function siguienteEscena() {               // un toque adelanta a la escena siguiente
+  if (!intro) return;
+  const e = ESCENAS[Math.max(0, intro.escena)];
+  intro.t = Math.max(intro.t, e.hasta);
+}
+function actualizarIntro(dt) {
+  intro.t += dt;
+  if (intro.t >= FIN_INTRO) { terminarIntro(); return; }
+  const i = ESCENAS.findIndex(e => intro.t < e.hasta);
+  if (i !== intro.escena) {
+    intro.escena = i;
+    const el = $('introTxt'); el.textContent = ESCENAS[i].txt;
+    el.classList.remove('entra'); void el.offsetWidth; el.classList.add('entra');
+    if (i === 2) beep(180, 1.6, 'sine', 0.08, 1400);       // el viaje
+    if (i === 3) beep(70, 1.4, 'sine', 0.16, 45);          // el agujero negro
+  }
+}
+const azar = i => { const x = Math.sin(i * 12.9898) * 43758.5453; return x - Math.floor(x); };
+const suave = (a, b, x) => { const k = Math.max(0, Math.min(1, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
+
+// Kuriri: bolita con ojos. abiertos: 1 = despierto, 0 = dormido (rayitas). mira: hacia dónde miran los ojos.
+function dibujarKuriri(x, y, r, color, abiertos = 1, mira = 0, brillo = 20) {
+  circulo(x, y, r, color, 1, brillo);
+  const ox = r * 0.36, oy = -r * 0.18, dx = mira * r * 0.12;
+  if (abiertos > 0.15) {
+    circulo(x - ox + dx, y + oy, r * 0.24, C.ink, 1);
+    circulo(x + ox + dx, y + oy, r * 0.24, C.ink, 1);
+    circulo(x - ox + dx * 1.6, y + oy, r * 0.11, '#1a1f3a', 1);
+    circulo(x + ox + dx * 1.6, y + oy, r * 0.11, '#1a1f3a', 1);
+    if (abiertos < 1) {                   // párpados bajando
+      ctx.fillStyle = color;
+      ctx.fillRect(x - ox - r * 0.3 + dx, y + oy - r * 0.3, r * 0.6, r * 0.6 * (1 - abiertos));
+      ctx.fillRect(x + ox - r * 0.3 + dx, y + oy - r * 0.3, r * 0.6, r * 0.6 * (1 - abiertos));
+    }
+  } else {
+    ctx.save(); ctx.strokeStyle = '#1a1f3a'; ctx.lineWidth = Math.max(1.5, r * 0.07); ctx.lineCap = 'round';
+    for (const sx of [-1, 1]) { ctx.beginPath(); ctx.arc(x + sx * ox, y + oy - r * 0.05, r * 0.16, 0.2, Math.PI - 0.2); ctx.stroke(); }
+    ctx.restore();
+  }
+}
+
+function dibujarOficina(t) {
+  const u = Math.min(W, H) / 400, mesa = cy + 50 * u;
+  // pieza de noche con la luz de una lámpara
+  ctx.fillStyle = '#0d1226'; ctx.fillRect(0, 0, W, H);
+  const luz = ctx.createRadialGradient(cx - 120 * u, cy - 140 * u, 0, cx - 120 * u, cy - 140 * u, 320 * u);
+  luz.addColorStop(0, 'rgba(255,200,120,0.22)'); luz.addColorStop(1, 'rgba(255,200,120,0)');
+  ctx.fillStyle = luz; ctx.fillRect(0, 0, W, H);
+  // ventana con estrellas: el espacio ya está esperando
+  const vx = cx + 40 * u, vy = cy - 210 * u, vw = 120 * u, vh = 90 * u;
+  ctx.fillStyle = '#05070f'; ctx.fillRect(vx, vy, vw, vh);
+  for (let i = 0; i < 14; i++) circulo(vx + azar(i) * vw, vy + azar(i + 50) * vh, 1 + azar(i + 9) * 1.2, C.ink, 0.4 + 0.4 * Math.sin(t * 2 + i));
+  ctx.strokeStyle = '#2b3358'; ctx.lineWidth = 4 * u; ctx.strokeRect(vx, vy, vw, vh);
+  ctx.beginPath(); ctx.moveTo(vx + vw / 2, vy); ctx.lineTo(vx + vw / 2, vy + vh); ctx.stroke();
+  // escritorio
+  ctx.fillStyle = '#3b2a20'; ctx.fillRect(0, mesa, W, H - mesa);
+  ctx.fillStyle = '#5a4030'; ctx.fillRect(0, mesa, W, 6 * u);
+  // taza de café
+  ctx.fillStyle = '#c9d2ea'; ctx.fillRect(cx - 150 * u, mesa - 26 * u, 20 * u, 26 * u);
+  ctx.strokeStyle = '#c9d2ea'; ctx.lineWidth = 3 * u; ctx.beginPath(); ctx.arc(cx - 128 * u, mesa - 14 * u, 6 * u, -1.4, 1.4); ctx.stroke();
+  // laptop: la pantalla muestra un currículum
+  const lx = cx + 55 * u, ancho = 140 * u, alto = 92 * u, top = mesa - 8 * u - alto;
+  ctx.fillStyle = '#2b3150'; ctx.fillRect(lx - ancho / 2, top, ancho, alto);
+  const pant = {x: lx - ancho / 2 + 6 * u, y: top + 6 * u, w: ancho - 12 * u, h: alto - 12 * u};
+  ctx.save(); ctx.shadowColor = C.inner; ctx.shadowBlur = 30 * u;
+  ctx.fillStyle = '#dfe8ff'; ctx.fillRect(pant.x, pant.y, pant.w, pant.h); ctx.restore();
+  ctx.fillStyle = '#1a1f3a'; ctx.font = `800 ${9 * u}px ${css('--display')}`; ctx.textBaseline = 'top';
+  ctx.fillText('CV #' + Math.min(148, 146 + Math.floor(t / 1.2)), pant.x + 30 * u, pant.y + 7 * u);
+  circulo(pant.x + 15 * u, pant.y + 14 * u, 8 * u, '#8a91b4', 1);
+  const desp = (t * 14 * u) % (10 * u);
+  ctx.save(); ctx.beginPath(); ctx.rect(pant.x, pant.y + 28 * u, pant.w, pant.h - 30 * u); ctx.clip();
+  for (let i = 0; i < 8; i++) {
+    ctx.fillStyle = i % 3 === 0 ? '#8a91b4' : '#b9c1dc';
+    ctx.fillRect(pant.x + 8 * u, pant.y + 30 * u + i * 10 * u - desp, pant.w * (0.5 + azar(i + Math.floor(t / 1.2)) * 0.4), 4 * u);
+  }
+  ctx.restore();
+  ctx.fillStyle = '#9aa3b8'; ctx.fillRect(lx - ancho / 2 - 10 * u, mesa - 8 * u, ancho + 20 * u, 8 * u);
+  return {mesa, lx, u, pant};
+}
+
+function dibujarIntro(t) {
+  const e = intro.t;
+  if (e < 7.2) {
+    // escenas 1 y 2: en la oficina; Kuriri lee, se le cierran los ojos y se apoya en el laptop
+    const o = dibujarOficina(e), u = o.u;
+    const sueno = suave(3.6, 5.6, e);                       // 0 despierto → 1 dormido
+    const parpadeo = e < 3.6 && (e % 1.7) < 0.12 ? 0.2 : 1;
+    const x = cx - 75 * u + sueno * 70 * u, y = o.mesa - 48 * u + sueno * 30 * u + Math.sin(e * 2) * 2 * u * (1 - sueno);
+    // corbata de psicólogo
+    ctx.fillStyle = C.danger; ctx.beginPath();
+    ctx.moveTo(x - 6 * u, y + 34 * u); ctx.lineTo(x + 6 * u, y + 34 * u); ctx.lineTo(x + 4 * u, y + 52 * u); ctx.lineTo(x, y + 58 * u); ctx.lineTo(x - 4 * u, y + 52 * u);
+    ctx.fill();
+    dibujarKuriri(x, y, 38 * u, C.outer, Math.max(0, 1 - sueno * 1.2) * parpadeo, 1 - sueno, 24 * u);
+    // Z z z
+    if (e > 5.2) for (let i = 0; i < 3; i++) {
+      const k = ((e - 5.2) * 0.6 + i / 3) % 1;
+      ctx.globalAlpha = Math.sin(k * Math.PI); ctx.fillStyle = C.ink;
+      ctx.font = `800 ${(12 + k * 14) * u}px ${css('--display')}`;
+      ctx.fillText('z', x + 30 * u + k * 40 * u, y - 40 * u - k * 70 * u); ctx.globalAlpha = 1;
+    }
+    // al final la pantalla se enciende y se lo traga el sueño
+    const blanco = suave(6.4, 7.2, e);
+    if (blanco > 0) {
+      const cxp = o.pant.x + o.pant.w / 2, cyp = o.pant.y + o.pant.h / 2;
+      const g = ctx.createRadialGradient(cxp, cyp, 0, cxp, cyp, Math.hypot(W, H) * blanco);
+      g.addColorStop(0, 'rgba(230,245,255,1)'); g.addColorStop(0.6, 'rgba(61,224,255,0.9)'); g.addColorStop(1, 'rgba(61,224,255,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
+    return;
+  }
+  // escena 3: viaje por el hiperespacio
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+  const max = Math.hypot(W, H) * 0.6;
+  if (e < 9.6) {
+    const v = suave(7.2, 8.2, e) * (1 - suave(9.0, 9.6, e));
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 110; i++) {
+      const ang = azar(i) * TAU, d = Math.pow((azar(i + 200) + e * 0.7) % 1, 2) * max;
+      ctx.strokeStyle = i % 4 === 0 ? C.inner : i % 4 === 1 ? C.outer : C.ink;
+      ctx.globalAlpha = Math.min(1, d / max * 2) * (0.3 + v * 0.7);
+      ctx.lineWidth = 1 + d / max * 2;
+      ctx.beginPath(); ctx.moveTo(cx + Math.cos(ang) * d, cy + Math.sin(ang) * d);
+      ctx.lineTo(cx + Math.cos(ang) * d * (1 + 0.04 + v * 0.25), cy + Math.sin(ang) * d * (1 + 0.04 + v * 0.25)); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    const fl = 1 - suave(7.2, 7.8, e);                   // resto del destello de la pantalla
+    if (fl > 0) { ctx.fillStyle = `rgba(61,224,255,${fl * 0.8})`; ctx.fillRect(0, 0, W, H); }
+    dibujarKuriri(cx, cy + Math.sin(e * 3) * 6, 26, C.inner, 1, Math.sin(e * 1.3), 26);
+    return;
+  }
+  // escena 4: aparece el agujero negro y Kuriri cae en espiral hasta su órbita (donde parte el juego)
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
+  g.addColorStop(0, C.bg2); g.addColorStop(1, C.bg); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = C.ink;
+  for (const st of estrellas) {
+    ctx.globalAlpha = st.b * Math.max(0, Math.min(1, (st.r - RS) / (RS * 2)));
+    ctx.fillRect(cx + Math.cos(st.a) * st.r, cy + Math.sin(st.a) * st.r, st.z, st.z);
+  }
+  const ap = suave(9.6, 10.8, e);
+  ctx.globalAlpha = ap; dibujarAgujero(t);
+  arco(RB[0], 0, TAU, C.inner, 2, 0.25 * ap); arco(RB[1], 0, TAU, C.outer, 2, 0.25 * ap);
+  ctx.globalAlpha = 1;
+  const falta = Math.max(0, (FIN_INTRO - e) / (FIN_INTRO - 9.6));
+  const r = RB[0] + (max * 0.9 - RB[0]) * falta * falta, a = -Math.PI / 2 - falta * 7;
+  dibujarKuriri(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 11 + falta * 10, C.inner, 1, 0, 20);
+}
+
 // ---------- bucle ----------
 let antes = performance.now(), textoDist = '';
 function cuadro(ahora) {
   const dtReal = Math.min((ahora - antes) / 1000, 1 / 30); antes = ahora;
   moverEstrellas(dtReal);
+  if (intro) actualizarIntro(dtReal);
   if (s) actualizar(dtReal, dtReal);
   const txt = s ? ((s.caida ? s.caida.r : s.pr) / RS).toFixed(2) + ' rₛ' : '—';
   if (txt !== textoDist) { textoDist = txt; $('dist').textContent = txt; }
   dibujar(ahora / 1000);
   requestAnimationFrame(cuadro);
 }
-$('jugar').addEventListener('click', intentarEmpezar);
+$('jugar').addEventListener('click', () => intentarEmpezar(false));
+$('verIntro').addEventListener('click', () => intentarEmpezar(true));
+$('saltar').addEventListener('click', terminarIntro);
 requestAnimationFrame(cuadro);
 })();
 </script>
