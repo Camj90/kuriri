@@ -292,7 +292,9 @@ function intentarEmpezar(conIntro = false) {
   if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   $('nombre').blur(); guardar('kuriri-nombre', $('nombre').value.trim());
   // La primera vez (o con «Ver la intro») se cuenta el sueño de Kuriri y luego parte el juego.
-  if (conIntro || !leer('kuriri-intro', 0)) empezarIntro(); else empezar();
+  // Cada nombre nuevo tiene que ver la intro completa (sin saltar) antes de su primera partida.
+  const esNuevo = !introVistos.includes(clave(nombreJugador()));
+  if (conIntro || esNuevo) empezarIntro(esNuevo); else empezar();
 }
 function tocar(e) {
   if (modo === 'intro') { if (e && e.target.id !== 'saltar') { e.preventDefault(); siguienteEscena(); } return; }
@@ -543,18 +545,28 @@ const ESCENAS = [
 ];
 const FIN_INTRO = ESCENAS[ESCENAS.length - 1].hasta;
 let intro = null;
-function empezarIntro() {
-  intro = {t: 0, escena: -1}; modo = 'intro'; s = null;
+// Nombres que ya vieron la intro en este aparato. Quien ya la había visto con la versión anterior queda contado.
+let introVistos = leer('kuriri-intro-vistos', null);
+if (!Array.isArray(introVistos)) {
+  introVistos = [];
+  const antes = leer('kuriri-nombre', '');
+  if (leer('kuriri-intro', 0)) introVistos.push(clave(typeof antes === 'string' && antes.trim() ? antes : 'Anónimo'));
+  guardar('kuriri-intro-vistos', introVistos);
+}
+function empezarIntro(obligatoria = false) {
+  intro = {t: 0, escena: -1, obligatoria}; modo = 'intro'; s = null;
+  $('saltar').hidden = obligatoria;
   $('panel').hidden = true; $('intro').hidden = false; document.body.classList.add('en-intro');
 }
 function terminarIntro() {
   if (!intro) return;
   intro = null; $('intro').hidden = true; document.body.classList.remove('en-intro');
-  guardar('kuriri-intro', 1);
+  const k = clave(nombreJugador());
+  if (!introVistos.includes(k)) { introVistos.push(k); guardar('kuriri-intro-vistos', introVistos.slice(-50)); }
   empezar();
 }
-function siguienteEscena() {               // un toque adelanta a la escena siguiente
-  if (!intro) return;
+function siguienteEscena() {               // un toque adelanta a la escena siguiente (no si es obligatoria)
+  if (!intro || intro.obligatoria) return;
   const e = ESCENAS[Math.max(0, intro.escena)];
   intro.t = Math.max(intro.t, e.hasta);
 }
@@ -714,7 +726,7 @@ function cuadro(ahora) {
 }
 $('jugar').addEventListener('click', () => intentarEmpezar(false));
 $('verIntro').addEventListener('click', () => intentarEmpezar(true));
-$('saltar').addEventListener('click', terminarIntro);
+$('saltar').addEventListener('click', () => { if (intro && !intro.obligatoria) terminarIntro(); });
 requestAnimationFrame(cuadro);
 })();
 </script>
