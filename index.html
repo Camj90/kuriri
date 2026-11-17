@@ -130,6 +130,9 @@ function mejoresPorJugador(lista) {
   }
   return ordenar([...m.values()]).slice(0, 50);
 }
+// Reinicio de marcas (17-11-2026): se aplica una sola vez en cada aparato; el nombre del jugador se conserva.
+const REINICIO = 1;
+if (leer('kuriri-reinicio', 0) < REINICIO) { guardar('kuriri-top', []); guardar('kuriri-reinicio', REINICIO); }
 let top = leer('kuriri-top', []);
 if (!Array.isArray(top)) top = [];
 top = mejoresPorJugador(top.filter(e => e && typeof e.n === 'string' && Number.isFinite(e.p)).map(e => ({n: e.n, p: e.p, f: e.f || 0})));
