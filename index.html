@@ -48,6 +48,21 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #jugar:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
 .leyenda{display:flex;justify-content:center;gap:16px;font-size:13px;color:var(--dim)}
 .leyenda i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+#panel{overflow-y:auto;padding-block:calc(env(safe-area-inset-top,0px) + 16px) calc(env(safe-area-inset-bottom,0px) + 16px)}
+.campo{display:grid;gap:6px;text-align:left}
+.campo label,.top h2{font-family:var(--display);font-weight:800;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);margin:0}
+#nombre{font:600 17px var(--body);color:var(--ink);background:rgba(255,255,255,.06);border:1px solid rgba(180,107,255,.5);
+  border-radius:12px;padding:12px 14px;width:100%;-webkit-user-select:text;user-select:text}
+#nombre::placeholder{color:var(--dim)}
+#nombre:focus{outline:2px solid var(--inner);outline-offset:1px}
+.top{display:grid;gap:6px;text-align:left}
+.top ol{margin:0;padding:0;list-style:none;display:grid;gap:4px;font-variant-numeric:tabular-nums}
+.top li{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;padding:7px 12px;border-radius:10px;background:rgba(255,255,255,.04);font-size:15px}
+.top li .pos{font-family:var(--display);color:var(--dim)}
+.top li .n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top li .p{font-family:var(--display);font-weight:800;color:var(--spark)}
+.top li.tu{background:rgba(255,213,74,.14);box-shadow:inset 0 0 0 1px rgba(255,213,74,.55)}
+.top li.vacio{display:block;color:var(--dim);font-size:14px}
 *{box-sizing:border-box}html,body{margin:0}[hidden]{display:none!important}
 :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 </style>
@@ -65,7 +80,10 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
     <div class="res" id="res" hidden><span class="big" id="final">0</span>chispas · récord <span id="finalRecord">0</span></div>
     <p id="msg">Kuriri gira sin parar alrededor del núcleo. <b>Toca la pantalla</b> para que salte entre la órbita interior y la exterior. Junta chispas para entretenerlo y esquiva los arcos rojos.</p>
     <div class="leyenda"><span><i style="background:var(--spark)"></i>chispa</span><span><i style="background:var(--danger)"></i>peligro</span></div>
+    <div class="campo"><label for="nombre">Tu nombre de jugador</label>
+      <input id="nombre" type="text" maxlength="12" autocomplete="nickname" placeholder="Escribe tu nombre" enterkeyhint="go"></div>
     <button id="jugar" type="button">JUGAR</button>
+    <div class="top"><h2>Top 5</h2><ol id="top"></ol></div>
   </div>
 </div>
 
@@ -91,9 +109,32 @@ function ajustar() {
 }
 addEventListener('resize', ajustar); ajustar();
 
-let record = 0;
-try { record = +localStorage.getItem('kuriri-record') || 0; } catch (e) {}
+// ---------- nombre y Top 5 (guardados en este teléfono) ----------
+const leer = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
+const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+let top = leer('kuriri-top', []);
+if (!Array.isArray(top)) top = [];
+top = top.filter(e => e && typeof e.n === 'string' && Number.isFinite(e.p)).slice(0, 5);
+let record = top.length ? top[0].p : 0;
 $('record').textContent = record;
+$('nombre').value = leer('kuriri-nombre', '');
+const nombreJugador = () => $('nombre').value.trim().replace(/\s+/g, ' ').slice(0, 12) || 'Anónimo';
+
+function pintarTop(marcar = -1) {
+  const ol = $('top'); ol.textContent = '';
+  if (!top.length) {
+    const li = document.createElement('li'); li.className = 'vacio';
+    li.textContent = 'Todavía no hay marcas. ¡La primera puede ser tuya!'; ol.append(li); return;
+  }
+  top.forEach((e, i) => {
+    const li = document.createElement('li'); if (i === marcar) li.className = 'tu';
+    for (const [clase, texto] of [['pos', i + 1], ['n', e.n], ['p', e.p]]) {
+      const sp = document.createElement('span'); sp.className = clase; sp.textContent = texto; li.append(sp);
+    }
+    ol.append(li);
+  });
+}
+pintarTop();
 
 // ---------- sonido (se crea con el primer toque) ----------
 let audio = null;
@@ -150,19 +191,27 @@ function empezar() {
   $('panel').hidden = true; $('puntos').textContent = '0';
   beep(440, 0.12, 'triangle', 0.1, 880);
 }
+function intentarEmpezar() {
+  if (modo === 'juego' || performance.now() - muertoEn < 650) return;
+  $('nombre').blur(); guardar('kuriri-nombre', $('nombre').value.trim());
+  empezar();
+}
 function tocar(e) {
+  if (modo !== 'juego') return;            // fuera del juego, los toques son del panel (nombre y botón)
   if (e) e.preventDefault();
-  if (modo === 'juego') {
+  {
     s.anillo = 1 - s.anillo;
     const p = posJugador();
     particulas(p.x, p.y, 4, s.anillo ? C.outer : C.inner, 90);
     beep(s.anillo ? 330 : 520, 0.05, 'square', 0.04);
-  } else if (performance.now() - muertoEn > 650) {
-    empezar();
   }
 }
 addEventListener('pointerdown', tocar, {passive: false});
-addEventListener('keydown', e => { if (e.code === 'Space' || e.code === 'Enter') tocar(e); });
+addEventListener('keydown', e => {
+  if (e.code !== 'Space' && e.code !== 'Enter') return;
+  if (modo === 'juego') tocar(e);
+  else if (e.code === 'Enter' || e.target.id !== 'nombre') { e.preventDefault(); intentarEmpezar(); }
+});
 
 function morir() {
   modo = 'muerto'; muertoEn = performance.now();
@@ -171,12 +220,25 @@ function morir() {
   const p = posJugador();
   particulas(p.x, p.y, 34, C.danger, 260); particulas(p.x, p.y, 14, C.ink, 180);
   beep(160, 0.45, 'sawtooth', 0.14, 40); vibrar(120);
-  if (s.puntos > record) { record = s.puntos; try { localStorage.setItem('kuriri-record', record); } catch (e) {} }
+  const esRecord = s.puntos > record;
+  let puesto = -1;
+  if (s.puntos > 0) {
+    const entrada = {n: nombreJugador(), p: s.puntos, f: Date.now()};
+    top.push(entrada);
+    top.sort((a, b) => b.p - a.p || a.f - b.f);   // empate: queda arriba quien lo logró primero
+    top = top.slice(0, 5);
+    puesto = top.indexOf(entrada);
+    guardar('kuriri-top', top);
+  }
+  record = top.length ? top[0].p : 0;
   $('record').textContent = record;
   setTimeout(() => {
     $('final').textContent = s.puntos; $('finalRecord').textContent = record;
     $('res').hidden = false;
-    $('msg').innerHTML = s.puntos >= record && s.puntos > 0 ? '<b>¡Nuevo récord!</b> Kuriri se divirtió. Toca para jugar otra vez.' : 'Kuriri se aburrió de nuevo. Toca para intentarlo otra vez.';
+    $('msg').innerHTML = esRecord ? '<b>¡Nuevo récord!</b> Kuriri se divirtió como nunca.'
+      : puesto >= 0 ? `<b>Entraste al Top 5</b> en el puesto ${puesto + 1}. Kuriri se entretuvo un rato.`
+      : 'Kuriri se aburrió de nuevo. ¿Otra vez?';
+    pintarTop(puesto);
     $('jugar').textContent = 'OTRA VEZ';
     $('panel').hidden = false;
   }, 650);
@@ -299,8 +361,7 @@ function cuadro(ahora) {
   dibujar(ahora / 1000);
   requestAnimationFrame(cuadro);
 }
-$('jugar').addEventListener('click', e => { e.stopPropagation(); if (modo !== 'juego' && performance.now() - muertoEn > 650) empezar(); });
-$('jugar').addEventListener('pointerdown', e => e.stopPropagation());
+$('jugar').addEventListener('click', intentarEmpezar);
 requestAnimationFrame(cuadro);
 })();
 </script>
