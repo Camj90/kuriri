@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Kuriri está aburrido</title>
+<meta name="description" content="Juego de un dedo: haz girar a Kuriri entre dos órbitas, junta chispas y esquiva los arcos rojos.">
+<meta name="theme-color" content="#070a14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kuriri">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icono-192.png">
+<link rel="apple-touch-icon" href="icono-180.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Inter:wght@400;600&display=swap">
+<style>
+/* Una sola pantalla: el juego ocupa todo, HUD arriba, panel centrado al empezar y al perder. Estética deliberadamente oscura (arcade). */
+:root{
+  --bg:#070a14; --bg2:#10162b; --core:#ff9e3d; --inner:#3de0ff; --outer:#b46bff;
+  --danger:#ff3d6e; --spark:#ffd54a; --ink:#e9ecff; --dim:#8a91b4;
+  --display:"Orbitron","Segoe UI",system-ui,sans-serif; --body:"Inter","Segoe UI",system-ui,sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%;background:var(--bg);color:var(--ink);overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;font-family:var(--body)}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+.hud{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;
+  padding-top:calc(env(safe-area-inset-top,0px) + 14px);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  pointer-events:none;font-family:var(--display)}
+.hud .lbl{font-size:11px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase}
+.hud .num{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.hud .der{text-align:right}
+#puntos.pop{animation:pop .22s cubic-bezier(.34,1.56,.64,1)}
+@keyframes pop{0%{transform:scale(1.35)}100%{transform:scale(1)}}
+#panel{position:fixed;inset:0;display:grid;place-items:center;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  background:radial-gradient(circle at 50% 50%,rgba(7,10,20,.35),rgba(7,10,20,.85))}
+.caja{max-width:340px;text-align:center;display:grid;gap:14px}
+.caja h1{font-family:var(--display);font-weight:800;font-size:34px;letter-spacing:.06em;margin:0;text-wrap:balance;
+  background:linear-gradient(90deg,var(--inner),var(--outer));-webkit-background-clip:text;background-clip:text;color:transparent}
+.caja p{margin:0;color:var(--dim);line-height:1.5;font-size:15px}
+.caja p b{color:var(--ink);font-weight:600}
+.res{font-family:var(--display);font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums}
+.res .big{display:block;font-size:52px;font-weight:800;color:var(--spark)}
+#jugar{justify-self:center;font-family:var(--display);font-weight:800;font-size:16px;letter-spacing:.12em;color:var(--bg);
+  background:var(--inner);border:0;border-radius:999px;padding:14px 34px;cursor:pointer;box-shadow:0 0 24px rgba(61,224,255,.45)}
+#jugar:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+.leyenda{display:flex;justify-content:center;gap:16px;font-size:13px;color:var(--dim)}
+.leyenda i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+*{box-sizing:border-box}html,body{margin:0}[hidden]{display:none!important}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+</style>
+</head>
+<body>
+
+<canvas id="c" aria-label="Área de juego"></canvas>
+<div class="hud" aria-live="polite">
+  <div><div class="lbl">Chispas</div><div class="num" id="puntos">0</div></div>
+  <div class="der"><div class="lbl">Récord</div><div class="num" id="record">0</div></div>
+</div>
+<div id="panel">
+  <div class="caja">
+    <h1>Kuriri está aburrido</h1>
+    <div class="res" id="res" hidden><span class="big" id="final">0</span>chispas · récord <span id="finalRecord">0</span></div>
+    <p id="msg">Kuriri gira sin parar alrededor del núcleo. <b>Toca la pantalla</b> para que salte entre la órbita interior y la exterior. Junta chispas para entretenerlo y esquiva los arcos rojos.</p>
+    <div class="leyenda"><span><i style="background:var(--spark)"></i>chispa</span><span><i style="background:var(--danger)"></i>peligro</span></div>
+    <button id="jugar" type="button">JUGAR</button>
+  </div>
+</div>
+
+<script>
+(() => {
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const C = {bg:css('--bg'), bg2:css('--bg2'), core:css('--core'), inner:css('--inner'), outer:css('--outer'),
+           danger:css('--danger'), spark:css('--spark'), ink:css('--ink')};
+const menosMovimiento = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = id => document.getElementById(id);
+const TAU = Math.PI * 2;
+
+let W, H, cx, cy, R = [0, 0];
+function ajustar() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cx = W / 2; cy = H / 2 + 20;
+  const m = Math.min(W, H - 80);
+  R = [m * 0.21, m * 0.38];
+}
+addEventListener('resize', ajustar); ajustar();
+
+let record = 0;
+try { record = +localStorage.getItem('kuriri-record') || 0; } catch (e) {}
+$('record').textContent = record;
+
+// ---------- sonido (se crea con el primer toque) ----------
+let audio = null;
+function beep(f, dur = 0.08, tipo = 'sine', vol = 0.12, fFin = null) {
+  if (!audio) return;
+  const t = audio.currentTime, o = audio.createOscillator(), g = audio.createGain();
+  o.type = tipo; o.frequency.setValueAtTime(f, t);
+  if (fFin) o.frequency.exponentialRampToValueAtTime(fFin, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(audio.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+function vibrar(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} }
+
+// ---------- estado ----------
+let modo = 'menu', s = null, muertoEn = 0;
+const angDif = (a, b) => { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
+
+function nuevo() {
+  s = {a: -Math.PI / 2, anillo: 0, pr: R[0], w: 1.7, t: 0, puntos: 0, obs: [], chispa: null,
+       cuenta: 0.9, parts: [], estela: [], trauma: 0, congelado: 0, tShake: 0, flash: 0};
+  nuevaChispa();
+}
+
+function nuevaChispa() {
+  for (let i = 0; i < 12; i++) {
+    const c = {anillo: Math.random() < 0.5 ? 0 : 1, a: s.a + s.w * (0.9 + Math.random() * 1.8)};
+    if (!s.obs.some(o => o.anillo === c.anillo && Math.abs(angDif(c.a, o.a)) < o.medio + 0.25)) { s.chispa = c; return; }
+  }
+  s.chispa = {anillo: 1 - s.anillo, a: s.a + Math.PI};
+}
+
+function nuevoObstaculo() {
+  const anillo = Math.random() < 0.5 ? 0 : 1;
+  const a = s.a + s.w * (0.9 + Math.random() * 1.4);
+  const medio = 0.17 + Math.random() * 0.13;
+  // Justo: nunca los dos anillos tapados en el mismo ángulo.
+  if (s.obs.some(o => o.anillo !== anillo && Math.abs(angDif(a, o.a)) < medio + o.medio + 0.35)) return;
+  s.obs.push({anillo, a, medio, nace: s.t, aviso: 0.55, vida: 2.4 + Math.random() * 1.6});
+}
+
+function particulas(x, y, n, color, vel = 160) {
+  for (let i = 0; i < n; i++) {
+    const ang = Math.random() * TAU, v = vel * (0.3 + Math.random());
+    s.parts.push({x, y, vx: Math.cos(ang) * v, vy: Math.sin(ang) * v, vida: 0.4 + Math.random() * 0.4, t: 0, color});
+  }
+}
+
+const posJugador = () => ({x: cx + Math.cos(s.a) * s.pr, y: cy + Math.sin(s.a) * s.pr});
+
+// ---------- entrada ----------
+function empezar() {
+  if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  nuevo(); modo = 'juego';
+  $('panel').hidden = true; $('puntos').textContent = '0';
+  beep(440, 0.12, 'triangle', 0.1, 880);
+}
+function tocar(e) {
+  if (e) e.preventDefault();
+  if (modo === 'juego') {
+    s.anillo = 1 - s.anillo;
+    const p = posJugador();
+    particulas(p.x, p.y, 4, s.anillo ? C.outer : C.inner, 90);
+    beep(s.anillo ? 330 : 520, 0.05, 'square', 0.04);
+  } else if (performance.now() - muertoEn > 650) {
+    empezar();
+  }
+}
+addEventListener('pointerdown', tocar, {passive: false});
+addEventListener('keydown', e => { if (e.code === 'Space' || e.code === 'Enter') tocar(e); });
+
+function morir() {
+  modo = 'muerto'; muertoEn = performance.now();
+  s.congelado = 0.12;                      // hit-stop (tier grande)
+  s.trauma = 1; s.flash = menosMovimiento ? 0 : 1;
+  const p = posJugador();
+  particulas(p.x, p.y, 34, C.danger, 260); particulas(p.x, p.y, 14, C.ink, 180);
+  beep(160, 0.45, 'sawtooth', 0.14, 40); vibrar(120);
+  if (s.puntos > record) { record = s.puntos; try { localStorage.setItem('kuriri-record', record); } catch (e) {} }
+  $('record').textContent = record;
+  setTimeout(() => {
+    $('final').textContent = s.puntos; $('finalRecord').textContent = record;
+    $('res').hidden = false;
+    $('msg').innerHTML = s.puntos >= record && s.puntos > 0 ? '<b>¡Nuevo récord!</b> Kuriri se divirtió. Toca para jugar otra vez.' : 'Kuriri se aburrió de nuevo. Toca para intentarlo otra vez.';
+    $('jugar').textContent = 'OTRA VEZ';
+    $('panel').hidden = false;
+  }, 650);
+}
+
+// ---------- simulación ----------
+function actualizar(dt, dtReal) {
+  // El temblor decae en tiempo real, también durante el hit-stop.
+  s.trauma = Math.max(0, s.trauma - 1.4 * dtReal);
+  s.flash = Math.max(0, s.flash - 4 * dtReal);
+  s.tShake += dtReal * 30;
+  if (s.congelado > 0) { s.congelado -= dtReal; return; }
+
+  s.t += dt;
+  if (modo === 'juego') {
+    s.w = 1.7 + Math.min(s.t * 0.035, 1.9);
+    s.a += s.w * dt;
+    s.pr += (R[s.anillo] - s.pr) * Math.min(1, dt * 16);
+    const p = posJugador();
+    s.estela.push({x: p.x, y: p.y}); if (s.estela.length > 14) s.estela.shift();
+
+    s.cuenta -= dt;
+    if (s.cuenta <= 0) { nuevoObstaculo(); s.cuenta = Math.max(0.4, 1.1 - s.t * 0.012); }
+    s.obs = s.obs.filter(o => s.t - o.nace < o.vida + 0.35);
+
+    for (const o of s.obs) {
+      const edad = s.t - o.nace;
+      if (edad < o.aviso || edad > o.vida) continue;
+      if (Math.abs(s.pr - R[o.anillo]) < 10 && Math.abs(angDif(s.a, o.a)) < o.medio + 8 / R[o.anillo]) { morir(); break; }
+    }
+    const c = s.chispa;
+    if (modo === 'juego' && c && Math.abs(s.pr - R[c.anillo]) < 14 && Math.abs(angDif(s.a, c.a)) < 16 / R[c.anillo]) {
+      s.puntos++;
+      const el = $('puntos'); el.textContent = s.puntos; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+      particulas(cx + Math.cos(c.a) * R[c.anillo], cy + Math.sin(c.a) * R[c.anillo], 10, C.spark, 150);
+      s.trauma = Math.min(1, s.trauma + 0.15);       // tier chico
+      beep(880 + Math.min(s.puntos, 20) * 25, 0.09, 'triangle', 0.1, 1320);
+      nuevaChispa();
+    }
+  }
+  for (const q of s.parts) { q.t += dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.96; q.vy *= 0.96; }
+  s.parts = s.parts.filter(q => q.t < q.vida);
+}
+
+// ---------- dibujo ----------
+function arco(r, a0, a1, color, ancho, alfa, brillo = 0) {
+  ctx.save(); ctx.globalAlpha = alfa; ctx.strokeStyle = color; ctx.lineWidth = ancho; ctx.lineCap = 'round';
+  if (brillo) { ctx.shadowColor = color; ctx.shadowBlur = brillo; }
+  ctx.beginPath(); ctx.arc(cx, cy, r, a0, a1); ctx.stroke(); ctx.restore();
+}
+function circulo(x, y, r, color, alfa = 1, brillo = 0) {
+  ctx.save(); ctx.globalAlpha = alfa; ctx.fillStyle = color;
+  if (brillo) { ctx.shadowColor = color; ctx.shadowBlur = brillo; }
+  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); ctx.restore();
+}
+
+function dibujar(tReal) {
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
+  g.addColorStop(0, C.bg2); g.addColorStop(1, C.bg);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  if (s && !menosMovimiento) {
+    const k = s.trauma * s.trauma;              // temblor = trauma² con senos sumados (sin zumbido)
+    ctx.translate(12 * k * Math.sin(s.tShake * 1.7), 9 * k * Math.sin(s.tShake * 2.3));
+  }
+
+  // núcleo
+  const pulso = 1 + Math.sin(tReal * 3) * 0.06;
+  circulo(cx, cy, R[0] * 0.32 * pulso, C.core, 0.25, 40);
+  circulo(cx, cy, R[0] * 0.2 * pulso, C.core, 1, 25);
+
+  // órbitas
+  const enJuego = s && modo === 'juego';
+  arco(R[0], 0, TAU, C.inner, 2, enJuego && s.anillo === 0 ? 0.7 : 0.25, enJuego && s.anillo === 0 ? 12 : 0);
+  arco(R[1], 0, TAU, C.outer, 2, enJuego && s.anillo === 1 ? 0.7 : 0.25, enJuego && s.anillo === 1 ? 12 : 0);
+
+  if (s) {
+    // obstáculos: parpadean mientras avisan, luego queman
+    for (const o of s.obs) {
+      const edad = s.t - o.nace, r = R[o.anillo];
+      if (edad < o.aviso) {
+        arco(r, o.a - o.medio, o.a + o.medio, C.danger, 6, 0.25 + 0.25 * Math.sin(edad * 40), 0);
+      } else {
+        const fin = Math.max(0, Math.min(1, (o.vida + 0.35 - edad) / 0.35));
+        arco(r, o.a - o.medio, o.a + o.medio, C.danger, 14, fin, 18);
+      }
+    }
+    // chispa
+    if (s.chispa) {
+      const c = s.chispa, x = cx + Math.cos(c.a) * R[c.anillo], y = cy + Math.sin(c.a) * R[c.anillo];
+      ctx.save(); ctx.translate(x, y); ctx.rotate(tReal * 3);
+      ctx.fillStyle = C.spark; ctx.shadowColor = C.spark; ctx.shadowBlur = 16;
+      ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(6, 0); ctx.lineTo(0, 8); ctx.lineTo(-6, 0); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    // nave y estela
+    if (modo === 'juego' || (modo === 'muerto' && s.congelado > 0)) {
+      const color = s.anillo ? C.outer : C.inner;
+      s.estela.forEach((e, i) => circulo(e.x, e.y, 2 + i * 0.4, color, i / s.estela.length * 0.5));
+      const p = posJugador();
+      circulo(p.x, p.y, 11, color, 1, 20);
+      const dx = -Math.sin(s.a) * 3, dy = Math.cos(s.a) * 3;
+      circulo(p.x - 4 + dx, p.y - 2 + dy, 2.6, C.ink, 1);
+      circulo(p.x + 4 + dx, p.y - 2 + dy, 2.6, C.ink, 1);
+    }
+    for (const q of s.parts) circulo(q.x, q.y, 2.4, q.color, 1 - q.t / q.vida);
+  }
+  ctx.restore();
+
+  if (s && s.flash > 0) { ctx.fillStyle = C.danger; ctx.globalAlpha = s.flash * 0.35; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+}
+
+// ---------- bucle ----------
+let antes = performance.now();
+function cuadro(ahora) {
+  const dtReal = Math.min((ahora - antes) / 1000, 1 / 30); antes = ahora;
+  if (s) actualizar(dtReal, dtReal);
+  dibujar(ahora / 1000);
+  requestAnimationFrame(cuadro);
+}
+$('jugar').addEventListener('click', e => { e.stopPropagation(); if (modo !== 'juego' && performance.now() - muertoEn > 650) empezar(); });
+$('jugar').addEventListener('pointerdown', e => e.stopPropagation());
+requestAnimationFrame(cuadro);
+})();
+</script>
+<script>
+if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+</script>
+</body>
+</html>
