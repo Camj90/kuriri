@@ -85,6 +85,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:10px 16px;cursor:pointer}
 #saltar:focus-visible,.link:focus-visible{outline:2px solid var(--inner);outline-offset:2px}
 body.en-intro .hud{visibility:hidden}
+.links{display:flex;justify-content:center;gap:4px;flex-wrap:wrap}
 .link{justify-self:center;background:none;border:0;color:var(--dim);font:600 14px var(--body);text-decoration:underline;
   text-underline-offset:3px;padding:6px 10px;cursor:pointer}
 *{box-sizing:border-box}html,body{margin:0}[hidden]{display:none!important}
@@ -108,7 +109,8 @@ body.en-intro .hud{visibility:hidden}
     <div class="campo"><label for="nombre">Tu nombre de jugador</label>
       <input id="nombre" type="text" maxlength="12" autocomplete="nickname" placeholder="Escribe tu nombre" enterkeyhint="go"></div>
     <button id="jugar" type="button">JUGAR</button>
-    <button id="verIntro" class="link" type="button">Ver la intro</button>
+    <div class="links"><button id="verIntro" class="link" type="button">Ver la intro</button>
+      <button id="musica" class="link" type="button" aria-pressed="true">Música: sí</button></div>
     <div class="top"><h2>Top 5</h2><ol id="top"></ol><p class="estado" id="estadoTop"></p></div>
   </div>
 </div>
@@ -242,6 +244,61 @@ function beep(f, dur = 0.08, tipo = 'sine', vol = 0.12, fFin = null) {
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   o.connect(g).connect(audio.destination); o.start(t); o.stop(t + dur + 0.02);
 }
+// ---------- música: «Horizonte» (tema original) y su mapa de tempo ----------
+// El tema acelera (104 → 128 BPM), se frena en el horizonte de eventos (96) y vuelve a subir en el clímax (140).
+// Kuriri gira al ritmo de la música: una vuelta cada 2 compases (8 pulsos), y más rápido mientras más cae (Kepler).
+const TEMA = 'sonido/horizonte.mp3';
+// [inicio de cada compás en segundos, BPM al empezar, BPM al terminar]. Lo genera herramientas/componer_horizonte.py.
+const COMPASES = [[0.0,104.0,104.47],[2.303,104.5,104.97],[4.594,105.0,105.47],[6.875,105.5,105.97],[9.144,106.0,106.47],[11.404,106.5,106.97],[13.652,107.0,107.47],[15.89,107.5,107.97],[18.118,108.0,108.7],[20.333,108.75,109.45],[22.533,109.5,110.2],[24.718,110.25,110.95],[26.888,111.0,111.7],[29.043,111.75,112.45],[31.184,112.5,113.2],[33.311,113.25,113.95],[35.423,114.0,114.7],[37.522,114.75,115.45],[39.607,115.5,116.2],[41.679,116.25,116.95],[43.737,117.0,117.7],[45.782,117.75,118.45],[47.814,118.5,119.2],[49.834,119.25,119.95],[51.84,120.0,120.47],[53.836,120.5,120.97],[55.824,121.0,121.47],[57.804,121.5,121.97],[59.775,122.0,122.47],[61.739,122.5,122.97],[63.694,123.0,123.47],[65.642,123.5,123.97],[67.581,124.0,124.47],[69.513,124.5,124.97],[71.437,125.0,125.47],[73.354,125.5,125.97],[75.263,126.0,126.47],[77.164,126.5,126.97],[79.058,127.0,127.47],[80.944,127.5,127.97],[82.823,128.0,124.25],[84.726,124.0,120.25],[86.691,120.0,116.25],[88.723,116.0,112.25],[90.826,112.0,108.25],[93.006,108.0,104.25],[95.268,104.0,100.25],[97.618,100.0,96.25],[100.064,130.0,130.59],[101.906,130.62,131.21],[103.739,131.25,131.84],[105.564,131.88,132.46],[107.38,132.5,133.09],[109.187,133.12,133.71],[110.986,133.75,134.34],[112.776,134.38,134.96],[114.559,135.0,135.59],[116.332,135.62,136.21],[118.098,136.25,136.84],[119.856,136.88,137.46],[121.606,137.5,138.09],[123.347,138.12,138.71],[125.081,138.75,139.34],[126.807,139.38,139.96],[128.526,136.0,130.38],[130.328,130.0,124.38],[132.215,124.0,118.38],[134.196,118.0,112.38],[136.28,0,0]];
+const DURACION = COMPASES[COMPASES.length - 1][0];
+const SECCION = {sueno: 18.118, espacio: 51.84};
+const PULSOS_POR_VUELTA = 8;
+let musicaOn = leer('kuriri-musica', true) !== false, pista = null, relojMusica = 0;
+function bpmEn(t) {
+  t = ((t % DURACION) + DURACION) % DURACION;
+  let a = 0, b = COMPASES.length - 1;
+  while (b - a > 1) { const m = (a + b) >> 1; if (COMPASES[m][0] <= t) a = m; else b = m; }
+  const [t0, b0, b1] = COMPASES[a], t1 = COMPASES[a + 1][0];
+  return b0 + (b1 - b0) * (t - t0) / (t1 - t0);
+}
+const sonando = () => pista && musicaOn && !pista.paused && pista.readyState >= 2;
+const tiempoMusica = () => sonando() ? pista.currentTime : relojMusica;
+function crearPista() {
+  if (pista) return;
+  pista = new Audio(TEMA); pista.preload = 'auto'; pista.volume = 0.6;
+  // al terminar: en medio de una partida sigue desde «el espacio»; en el menú vuelve al comienzo
+  pista.addEventListener('ended', () => irA(modo === 'juego' || modo === 'muerto' ? SECCION.espacio : 0));
+}
+function irA(t) {
+  relojMusica = t;
+  if (!pista) return;
+  try { pista.currentTime = t; } catch (e) {}
+  if (musicaOn && !document.hidden) pista.play().catch(() => {});
+}
+function arrancarMusica() {
+  crearPista();
+  if (musicaOn && pista.paused) irA(relojMusica);
+}
+// Reloj de la música: sigue al audio cuando suena y avanza solo cuando está apagado (el juego igual va al compás).
+function avanzarReloj(dt) {
+  if (sonando()) { relojMusica = pista.currentTime; return; }
+  relojMusica += dt;
+  if (relojMusica >= DURACION) relojMusica = modo === 'juego' || modo === 'muerto' ? SECCION.espacio : 0;
+}
+function pintarMusica() {
+  $('musica').textContent = musicaOn ? 'Música: sí' : 'Música: no';
+  $('musica').setAttribute('aria-pressed', musicaOn);
+}
+$('musica').addEventListener('click', () => {
+  musicaOn = !musicaOn; guardar('kuriri-musica', musicaOn); pintarMusica();
+  if (musicaOn) arrancarMusica(); else if (pista) { relojMusica = pista.currentTime; pista.pause(); }
+});
+document.addEventListener('visibilitychange', () => {
+  if (!pista) return;
+  if (document.hidden) pista.pause(); else if (musicaOn) pista.play().catch(() => {});
+});
+pintarMusica();
+
 function vibrar(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} }
 
 // ---------- estado ----------
@@ -290,11 +347,13 @@ function empezar() {
 function intentarEmpezar(conIntro = false) {
   if (modo === 'juego' || modo === 'intro' || performance.now() - muertoEn < 650) return;
   if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  arrancarMusica();
   $('nombre').blur(); guardar('kuriri-nombre', $('nombre').value.trim());
   // La primera vez (o con «Ver la intro») se cuenta el sueño de Kuriri y luego parte el juego.
   // Cada nombre nuevo tiene que ver la intro completa (sin saltar) antes de su primera partida.
   const esNuevo = !introVistos.includes(clave(nombreJugador()));
-  if (conIntro || esNuevo) empezarIntro(esNuevo); else empezar();
+  if (conIntro || esNuevo) { irA(Math.max(0, SECCION.sueno - FIN_INTRO)); empezarIntro(esNuevo); }
+  else { irA(SECCION.sueno); empezar(); }
 }
 function tocar(e) {
   if (modo === 'intro') { if (e && e.target.id !== 'saltar') { e.preventDefault(); siguienteEscena(); } return; }
@@ -380,8 +439,8 @@ function actualizar(dt, dtReal) {
   if (modo === 'juego') {
     R = radios(s.t);
     // Más cerca del agujero negro, órbita más rápida (Kepler: ω ∝ r^-1.5, aquí suavizado).
-    const kepler = Math.min(1.45, Math.sqrt(RB[0] / R[0]));
-    s.w = (1.7 + Math.min(s.t * 0.025, 1.2)) * kepler;
+    const kepler = Math.min(1.5, Math.sqrt(RB[0] / R[0]));
+    s.w = TAU * bpmEn(tiempoMusica()) / 60 / PULSOS_POR_VUELTA * kepler;   // al ritmo de la música
     s.a += s.w * dt;
     s.pr += (R[s.anillo] - s.pr) * Math.min(1, dt * 16);
     const p = posJugador();
@@ -561,6 +620,7 @@ function empezarIntro(obligatoria = false) {
 function terminarIntro() {
   if (!intro) return;
   intro = null; $('intro').hidden = true; document.body.classList.remove('en-intro');
+  if (tiempoMusica() < SECCION.sueno - 0.6) irA(SECCION.sueno);
   const k = clave(nombreJugador());
   if (!introVistos.includes(k)) { introVistos.push(k); guardar('kuriri-intro-vistos', introVistos.slice(-50)); }
   empezar();
@@ -716,6 +776,7 @@ function dibujarIntro(t) {
 let antes = performance.now(), textoDist = '';
 function cuadro(ahora) {
   const dtReal = Math.min((ahora - antes) / 1000, 1 / 30); antes = ahora;
+  avanzarReloj(dtReal);
   moverEstrellas(dtReal);
   if (intro) actualizarIntro(dtReal);
   if (s) actualizar(dtReal, dtReal);
@@ -724,6 +785,8 @@ function cuadro(ahora) {
   dibujar(ahora / 1000);
   requestAnimationFrame(cuadro);
 }
+// Solo en modo prueba: deja ver el tempo y la velocidad de giro desde la consola.
+if (PRUEBA) window.kuririDiag = () => ({modo, w: s && s.w, t: tiempoMusica(), bpm: bpmEn(tiempoMusica()), sonando: !!sonando()});
 $('jugar').addEventListener('click', () => intentarEmpezar(false));
 $('verIntro').addEventListener('click', () => intentarEmpezar(true));
 $('saltar').addEventListener('click', () => { if (intro && !intro.obligatoria) terminarIntro(); });
