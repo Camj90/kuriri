@@ -1,5 +1,5 @@
 // Guarda el juego en el teléfono para que funcione sin internet.
-const CACHE = 'kuriri-v2';
+const CACHE = 'kuriri-v3';
 const ARCHIVOS = ['./', './index.html', './manifest.webmanifest', './icono-180.png', './icono-192.png', './icono-512.png'];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(

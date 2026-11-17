@@ -119,9 +119,21 @@ addEventListener('resize', ajustar); ajustar();
 // ---------- nombre y Top 5 (guardados en este teléfono) ----------
 const leer = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
 const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+// 'kuriri-top' guarda la MEJOR marca de cada jugador (una fila por nombre); el Top 5 son las 5 primeras.
+const clave = n => n.trim().toLocaleLowerCase('es');
+const ordenar = l => l.sort((a, b) => b.p - a.p || a.f - b.f);   // empate: arriba quien lo logró primero
+function mejoresPorJugador(lista) {
+  const m = new Map();
+  for (const e of lista) {
+    const k = clave(e.n), prev = m.get(k);
+    if (!prev || e.p > prev.p || (e.p === prev.p && e.f < prev.f)) m.set(k, e);
+  }
+  return ordenar([...m.values()]).slice(0, 50);
+}
 let top = leer('kuriri-top', []);
 if (!Array.isArray(top)) top = [];
-top = top.filter(e => e && typeof e.n === 'string' && Number.isFinite(e.p)).slice(0, 5);
+top = mejoresPorJugador(top.filter(e => e && typeof e.n === 'string' && Number.isFinite(e.p)).map(e => ({n: e.n, p: e.p, f: e.f || 0})));
+guardar('kuriri-top', top);
 let record = top.length ? top[0].p : 0;
 $('record').textContent = record;
 $('nombre').value = leer('kuriri-nombre', '');
@@ -133,7 +145,7 @@ function pintarTop(marcar = -1) {
     const li = document.createElement('li'); li.className = 'vacio';
     li.textContent = 'Todavía no hay marcas. ¡La primera puede ser tuya!'; ol.append(li); return;
   }
-  top.forEach((e, i) => {
+  top.slice(0, 5).forEach((e, i) => {
     const li = document.createElement('li'); if (i === marcar) li.className = 'tu';
     for (const [clase, texto] of [['pos', i + 1], ['n', e.n], ['p', e.p]]) {
       const sp = document.createElement('span'); sp.className = clase; sp.textContent = texto; li.append(sp);
@@ -228,22 +240,27 @@ function morir() {
   particulas(p.x, p.y, 34, C.danger, 260); particulas(p.x, p.y, 14, C.ink, 180);
   beep(160, 0.45, 'sawtooth', 0.14, 40); vibrar(120);
   const esRecord = s.puntos > record;
-  let puesto = -1;
-  if (s.puntos > 0) {
-    const entrada = {n: nombreJugador(), p: s.puntos, f: Date.now()};
-    top.push(entrada);
-    top.sort((a, b) => b.p - a.p || a.f - b.f);   // empate: queda arriba quien lo logró primero
-    top = top.slice(0, 5);
-    puesto = top.indexOf(entrada);
+  const nombre = nombreJugador();
+  const previa = top.find(e => clave(e.n) === clave(nombre));
+  const mejoro = s.puntos > 0 && (!previa || s.puntos > previa.p);
+  if (mejoro) {
+    top = top.filter(e => e !== previa);
+    top.push({n: nombre, p: s.puntos, f: Date.now()});
+    top = mejoresPorJugador(top);
     guardar('kuriri-top', top);
   }
+  const iMio = top.findIndex(e => clave(e.n) === clave(nombre));
+  const puesto = iMio >= 0 && iMio < 5 ? iMio : -1;          // se resalta tu fila del Top 5
+  const mejorMia = iMio >= 0 ? top[iMio].p : 0;
   record = top.length ? top[0].p : 0;
   $('record').textContent = record;
   setTimeout(() => {
     $('final').textContent = s.puntos; $('finalRecord').textContent = record;
     $('res').hidden = false;
     $('msg').innerHTML = esRecord ? '<b>¡Nuevo récord!</b> Kuriri se divirtió como nunca.'
-      : puesto >= 0 ? `<b>Entraste al Top 5</b> en el puesto ${puesto + 1}. Kuriri se entretuvo un rato.`
+      : mejoro && puesto >= 0 ? `<b>¡Mejoraste tu marca!</b> Quedaste en el puesto ${puesto + 1} del Top 5.`
+      : mejoro ? '<b>¡Mejoraste tu marca!</b> Kuriri se entretuvo un rato.'
+      : mejorMia ? `Tu mejor marca sigue siendo <b>${mejorMia}</b>. Kuriri se aburrió de nuevo. ¿Otra vez?`
       : 'Kuriri se aburrió de nuevo. ¿Otra vez?';
     pintarTop(puesto);
     $('jugar').textContent = 'OTRA VEZ';
