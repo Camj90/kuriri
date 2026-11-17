@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Kuriri está aburrido</title>
-<meta name="description" content="Juego de un dedo: haz girar a Kuriri entre dos órbitas, junta chispas y esquiva los arcos rojos.">
+<meta name="description" content="Juego de un dedo: Kuriri orbita un agujero negro y cae hacia él sin llegar nunca. Junta chispas y esquiva los arcos rojos.">
 <meta name="theme-color" content="#070a14">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Kuriri">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Kuriri está aburrido">
-<meta property="og:description" content="Juego de un dedo: haz girar a Kuriri entre dos órbitas, junta chispas y entra al Top 5.">
+<meta property="og:description" content="Juego de un dedo: Kuriri cae a un agujero negro sin llegar nunca. Junta chispas, no te hagas espagueti y entra al Top 5.">
 <meta property="og:image" content="https://camj90.github.io/kuriri/vista-previa.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -38,6 +38,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 .hud .lbl{font-size:11px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase}
 .hud .num{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
 .hud .der{text-align:right}
+.hud .cen{text-align:center}
+.hud .num.chico{font-size:20px;line-height:1.6;color:var(--core)}
 #puntos.pop{animation:pop .22s cubic-bezier(.34,1.56,.64,1)}
 @keyframes pop{0%{transform:scale(1.35)}100%{transform:scale(1)}}
 #panel{position:fixed;inset:0;display:grid;place-items:center;
@@ -80,13 +82,14 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <canvas id="c" aria-label="Área de juego"></canvas>
 <div class="hud" aria-live="polite">
   <div><div class="lbl">Chispas</div><div class="num" id="puntos">0</div></div>
+  <div class="cen"><div class="lbl">Distancia</div><div class="num chico" id="dist">—</div></div>
   <div class="der"><div class="lbl">Récord</div><div class="num" id="record">0</div></div>
 </div>
 <div id="panel">
   <div class="caja">
     <h1>Kuriri está aburrido</h1>
     <div class="res" id="res" hidden><span class="big" id="final">0</span>chispas · récord <span id="finalRecord">0</span></div>
-    <p id="msg">Kuriri gira sin parar alrededor del núcleo. <b>Toca la pantalla</b> para que salte entre la órbita interior y la exterior. Junta chispas para entretenerlo y esquiva los arcos rojos.</p>
+    <p id="msg">Kuriri orbita un agujero negro y cae hacia él, cada vez más lento, sin llegar nunca. <b>Toca la pantalla</b> para saltar entre la órbita interior y la exterior. Junta chispas y esquiva los arcos rojos: si chocas, Kuriri cae al centro y se estira como espagueti.</p>
     <div class="leyenda"><span><i style="background:var(--spark)"></i>chispa</span><span><i style="background:var(--danger)"></i>peligro</span></div>
     <div class="campo"><label for="nombre">Tu nombre de jugador</label>
       <input id="nombre" type="text" maxlength="12" autocomplete="nickname" placeholder="Escribe tu nombre" enterkeyhint="go"></div>
@@ -105,7 +108,8 @@ const menosMovimiento = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = id => document.getElementById(id);
 const TAU = Math.PI * 2;
 
-let W, H, cx, cy, R = [0, 0];
+// RB = órbitas al empezar; RS = radio de Schwarzschild (horizonte de eventos); R = órbitas de este momento.
+let W, H, cx, cy, RB = [0, 0], RS = 0, R = [0, 0];
 function ajustar() {
   const dpr = Math.min(devicePixelRatio || 1, 2);
   W = innerWidth; H = innerHeight;
@@ -113,7 +117,14 @@ function ajustar() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   cx = W / 2; cy = H / 2 + 20;
   const m = Math.min(W, H - 80);
-  R = [m * 0.21, m * 0.38];
+  RB = [m * 0.21, m * 0.38]; RS = m * 0.05; R = RB.slice();
+}
+// Caída de Zenón: lo que falta por caer es 1/(1 + t/25). A los 25 s recorrió la mitad, a los 75 s
+// tres cuartos, a los 175 s siete octavos... cada tramo tarda más que el anterior y nunca llega al piso.
+const T_CAIDA = 25;
+function radios(t) {
+  const f = 1 / (1 + t / T_CAIDA), piso = [RS * 2.4, RS * 5];
+  return [piso[0] + (RB[0] - piso[0]) * f, piso[1] + (RB[1] - piso[1]) * f];
 }
 addEventListener('resize', ajustar); ajustar();
 
@@ -214,7 +225,8 @@ let modo = 'menu', s = null, muertoEn = 0;
 const angDif = (a, b) => { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
 
 function nuevo() {
-  s = {a: -Math.PI / 2, anillo: 0, pr: R[0], w: 1.7, t: 0, puntos: 0, obs: [], chispa: null,
+  R = radios(0);
+  s = {caida: null, a: -Math.PI / 2, anillo: 0, pr: R[0], w: 1.7, t: 0, puntos: 0, obs: [], chispa: null,
        cuenta: 0.9, parts: [], estela: [], trauma: 0, congelado: 0, tShake: 0, flash: 0};
   nuevaChispa();
 }
@@ -275,12 +287,17 @@ addEventListener('keydown', e => {
 });
 
 function morir() {
-  modo = 'muerto'; muertoEn = performance.now();
-  s.congelado = 0.12;                      // hit-stop (tier grande)
-  s.trauma = 1; s.flash = menosMovimiento ? 0 : 1;
+  // El arco rojo no lo destruye: lo empuja al agujero negro. Cae en espiral, las fuerzas de marea
+  // lo estiran (espaguetización), su luz se corre al rojo y desaparece en el horizonte de eventos.
+  const DUR = 1.7;
+  modo = 'muerto'; muertoEn = performance.now() + DUR * 1000;
+  s.congelado = 0.08;                      // hit-stop corto: el golpe
+  s.trauma = 0.7; s.flash = menosMovimiento ? 0 : 0.6;
   const p = posJugador();
-  particulas(p.x, p.y, 34, C.danger, 260); particulas(p.x, p.y, 14, C.ink, 180);
-  beep(160, 0.45, 'sawtooth', 0.14, 40); vibrar(120);
+  particulas(p.x, p.y, 16, C.danger, 200);
+  s.caida = {t: 0, dur: DUR, r0: s.pr, r: s.pr, a: s.a, w: s.w, color: s.anillo ? C.outer : C.inner,
+             rastro: [], listo: false, minimo: s.pr / RS, alTerminar: null};
+  beep(240, 1.6, 'sawtooth', 0.1, 30); beep(110, 1.8, 'sine', 0.2, 22); vibrar([60, 50, 260]);
   const esRecord = s.puntos > record;
   const nombre = nombreJugador();
   const previa = locales.find(e => clave(e.n) === clave(nombre));
@@ -294,19 +311,20 @@ function morir() {
     subirMarca(nombre).then(cargarTop);
   }
   const mejorMia = mejoro ? s.puntos : previa ? previa.p : 0;
-  setTimeout(() => {
+  s.caida.alTerminar = () => {
     pintarTop();
     const iTop = top().slice(0, 5).findIndex(e => clave(e.n) === clave(nombre));
     $('final').textContent = s.puntos; $('finalRecord').textContent = record;
     $('res').hidden = false;
-    $('msg').innerHTML = esRecord ? '<b>¡Nuevo récord!</b> Kuriri se divirtió como nunca.'
-      : mejoro && iTop >= 0 ? `<b>¡Mejoraste tu marca!</b> Vas en el puesto ${iTop + 1} del Top 5.`
-      : mejoro ? '<b>¡Mejoraste tu marca!</b> Kuriri se entretuvo un rato.'
-      : mejorMia ? `Tu mejor marca sigue siendo <b>${mejorMia}</b>. Kuriri se aburrió de nuevo. ¿Otra vez?`
-      : 'Kuriri se aburrió de nuevo. ¿Otra vez?';
+    const llego = `Llegó a <b>${s.caida.minimo.toFixed(2)} rₛ</b> del centro antes de hacerse espagueti.`;
+    $('msg').innerHTML = esRecord ? `<b>¡Nuevo récord!</b> ${llego}`
+      : mejoro && iTop >= 0 ? `<b>¡Mejoraste tu marca!</b> Vas en el puesto ${iTop + 1} del Top 5. ${llego}`
+      : mejoro ? `<b>¡Mejoraste tu marca!</b> ${llego}`
+      : mejorMia ? `Tu mejor marca sigue siendo <b>${mejorMia}</b>. ${llego}`
+      : `Kuriri cruzó el horizonte de eventos. ${llego}`;
     $('jugar').textContent = 'OTRA VEZ';
     $('panel').hidden = false;
-  }, 650);
+  };
 }
 
 // ---------- simulación ----------
@@ -318,8 +336,24 @@ function actualizar(dt, dtReal) {
   if (s.congelado > 0) { s.congelado -= dtReal; return; }
 
   s.t += dt;
+  if (s.caida && !s.caida.listo) {
+    const c = s.caida; c.t += dt;
+    const u = Math.min(1, c.t / c.dur);
+    c.r = RS + (c.r0 - RS) * (1 - u * u);                       // cae cada vez más rápido
+    c.a += Math.min(16, c.w * Math.pow(c.r0 / c.r, 1.5)) * dt;  // y gira más rápido al acercarse (Kepler)
+    c.rastro.push({x: cx + Math.cos(c.a) * c.r, y: cy + Math.sin(c.a) * c.r});
+    if (c.rastro.length > 28) c.rastro.shift();
+    if (u >= 1) {
+      c.listo = true; s.flash = menosMovimiento ? 0 : 0.5; s.trauma = Math.min(1, s.trauma + 0.4);
+      particulas(cx, cy, 20, C.core, 120); beep(60, 0.5, 'sine', 0.2, 30); vibrar(80);
+      c.alTerminar && c.alTerminar();
+    }
+  }
   if (modo === 'juego') {
-    s.w = 1.7 + Math.min(s.t * 0.035, 1.9);
+    R = radios(s.t);
+    // Más cerca del agujero negro, órbita más rápida (Kepler: ω ∝ r^-1.5, aquí suavizado).
+    const kepler = Math.min(1.45, Math.sqrt(RB[0] / R[0]));
+    s.w = (1.7 + Math.min(s.t * 0.025, 1.2)) * kepler;
     s.a += s.w * dt;
     s.pr += (R[s.anillo] - s.pr) * Math.min(1, dt * 16);
     const p = posJugador();
@@ -372,10 +406,14 @@ function dibujar(tReal) {
     ctx.translate(12 * k * Math.sin(s.tShake * 1.7), 9 * k * Math.sin(s.tShake * 2.3));
   }
 
-  // núcleo
-  const pulso = 1 + Math.sin(tReal * 3) * 0.06;
-  circulo(cx, cy, R[0] * 0.32 * pulso, C.core, 0.25, 40);
-  circulo(cx, cy, R[0] * 0.2 * pulso, C.core, 1, 25);
+  // estrellas que caen en espiral
+  ctx.fillStyle = C.ink;
+  for (const e of estrellas) {
+    ctx.globalAlpha = e.b * Math.max(0, Math.min(1, (e.r - RS) / (RS * 2)));
+    ctx.fillRect(cx + Math.cos(e.a) * e.r, cy + Math.sin(e.a) * e.r, e.z, e.z);
+  }
+  ctx.globalAlpha = 1;
+  dibujarAgujero(tReal);
 
   // órbitas
   const enJuego = s && modo === 'juego';
@@ -411,6 +449,21 @@ function dibujar(tReal) {
       circulo(p.x - 4 + dx, p.y - 2 + dy, 2.6, C.ink, 1);
       circulo(p.x + 4 + dx, p.y - 2 + dy, 2.6, C.ink, 1);
     }
+    if (s.caida && !s.caida.listo) {
+      const c = s.caida, u = Math.min(1, c.t / c.dur), n = c.rastro.length;
+      // el fideo: más delgado y más rojo mientras más cae (corrimiento al rojo)
+      c.rastro.forEach((e, i) => {
+        const k = (i + 1) / n, r = (1.2 + k * 6) * (1 - u * 0.6);
+        circulo(e.x, e.y, r, c.color, k * 0.6 * (1 - u));
+        circulo(e.x, e.y, r, C.danger, k * 0.6 * u);
+      });
+      // el cuerpo: las fuerzas de marea lo estiran hacia el centro y lo adelgazan
+      const x = cx + Math.cos(c.a) * c.r, y = cy + Math.sin(c.a) * c.r;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(c.a);
+      ctx.scale(1 + u * 5, Math.max(0.15, 1 - u * 0.85));
+      circulo(0, 0, 11, c.color, 1 - u * 0.7, 20); circulo(0, 0, 11, C.danger, u * 0.8, 20);
+      ctx.restore();
+    }
     for (const q of s.parts) circulo(q.x, q.y, 2.4, q.color, 1 - q.t / q.vida);
   }
   ctx.restore();
@@ -418,11 +471,50 @@ function dibujar(tReal) {
   if (s && s.flash > 0) { ctx.fillStyle = C.danger; ctx.globalAlpha = s.flash * 0.35; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
 }
 
+// ---------- agujero negro ----------
+let estrellas = [];
+function nuevaEstrella(e, enBorde) {
+  const max = Math.hypot(W, H) * 0.6;
+  e.r = enBorde ? max * (0.85 + Math.random() * 0.25) : RS * 1.5 + Math.random() * max;
+  e.a = Math.random() * TAU; e.b = 0.25 + Math.random() * 0.6; e.z = Math.random() < 0.85 ? 1.2 : 2;
+  return e;
+}
+function moverEstrellas(dt) {
+  if (estrellas.length !== 140) estrellas = Array.from({length: 140}, () => nuevaEstrella({}, false));
+  if (menosMovimiento) return;
+  for (const e of estrellas) {
+    const k = RS * 4 / e.r;
+    e.a += Math.min(6, 0.12 * Math.pow(k, 1.5)) * dt;   // giran más rápido cerca del centro
+    e.r -= (4 + 40 * k * k) * dt;                       // y caen cada vez más rápido
+    if (e.r < RS) nuevaEstrella(e, true);
+  }
+}
+function dibujarAgujero(t) {
+  // disco de acreción: halo caliente que se enfría hacia afuera
+  const g = ctx.createRadialGradient(cx, cy, RS * 0.95, cx, cy, RS * 5);
+  g.addColorStop(0, 'rgba(255,214,150,0.95)'); g.addColorStop(0.12, 'rgba(255,158,61,0.55)');
+  g.addColorStop(0.45, 'rgba(190,70,120,0.16)'); g.addColorStop(1, 'rgba(7,10,20,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, RS * 5, 0, TAU); ctx.fill();
+  // remolinos del disco: los de adentro giran más rápido
+  for (let i = 0; i < 6; i++) {
+    const r = RS * (1.35 + i * 0.42), v = 2.6 / Math.pow(1 + i * 0.42, 1.5);
+    const a0 = (menosMovimiento ? 0 : t * v) + i * 1.7;
+    arco(r, a0, a0 + 1.1 - i * 0.08, C.core, 2.2 - i * 0.25, 0.5 - i * 0.06);
+    arco(r, a0 + Math.PI, a0 + Math.PI + 0.7, C.core, 1.6 - i * 0.18, 0.3 - i * 0.04);
+  }
+  // anillo de fotones y horizonte de eventos
+  arco(RS * 1.12, 0, TAU, '#ffe2b0', 2, 0.9, 14);
+  circulo(cx, cy, RS, '#000', 1);
+}
+
 // ---------- bucle ----------
-let antes = performance.now();
+let antes = performance.now(), textoDist = '';
 function cuadro(ahora) {
   const dtReal = Math.min((ahora - antes) / 1000, 1 / 30); antes = ahora;
+  moverEstrellas(dtReal);
   if (s) actualizar(dtReal, dtReal);
+  const txt = s ? ((s.caida ? s.caida.r : s.pr) / RS).toFixed(2) + ' rₛ' : '—';
+  if (txt !== textoDist) { textoDist = txt; $('dist').textContent = txt; }
   dibujar(ahora / 1000);
   requestAnimationFrame(cuadro);
 }
