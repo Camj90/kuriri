@@ -274,6 +274,9 @@ const DURACION = COMPASES[COMPASES.length - 1][0];
 const SECCION = {sueno: 18.118, espacio: 51.84};
 const PULSOS_POR_VUELTA = 8;
 let musicaOn = leer('kuriri-musica', true) !== false, pista = null, relojMusica = 0;
+// Al caer al agujero la música se desvanece y queda en silencio hasta que se vuelva a pulsar JUGAR.
+// Pasa por un nodo de ganancia de Web Audio para que el desvanecido funcione también en iPhone.
+let ganancia = null, silencio = false, silencioT = 0;
 function bpmEn(t) {
   t = ((t % DURACION) + DURACION) % DURACION;
   let a = 0, b = COMPASES.length - 1;
@@ -289,15 +292,44 @@ function crearPista() {
   pista.preservesPitch = pista.mozPreservesPitch = pista.webkitPreservesPitch = false;   // más lenta = más grave
   // al terminar: en medio de una partida sigue desde «el espacio»; en el menú vuelve al comienzo
   pista.addEventListener('ended', () => irA(modo === 'juego' || modo === 'muerto' ? SECCION.espacio : 0));
+  if (audio) {
+    try {
+      const fuente = audio.createMediaElementSource(pista);
+      ganancia = audio.createGain(); fuente.connect(ganancia).connect(audio.destination);
+    } catch (e) { ganancia = null; }
+  }
+}
+function desvanecerMusica(seg = 1.6) {
+  silencio = true;
+  if (!pista) return;
+  clearTimeout(silencioT);
+  if (ganancia && audio) {
+    const t = audio.currentTime;
+    ganancia.gain.cancelScheduledValues(t); ganancia.gain.setValueAtTime(ganancia.gain.value, t);
+    ganancia.gain.linearRampToValueAtTime(0, t + seg);
+  } else {
+    const v0 = pista.volume, t0 = performance.now();
+    const paso = () => { const k = (performance.now() - t0) / (seg * 1000); if (!silencio) return;
+      pista.volume = Math.max(0, v0 * (1 - k)); if (k < 1) requestAnimationFrame(paso); };
+    paso();
+  }
+  silencioT = setTimeout(() => { if (silencio && pista) { relojMusica = pista.currentTime; pista.pause(); } }, seg * 1000 + 60);
+}
+function devolverVolumen() {
+  silencio = false; clearTimeout(silencioT);
+  if (!pista) return;
+  pista.volume = 0.6;
+  if (ganancia && audio) { const t = audio.currentTime; ganancia.gain.cancelScheduledValues(t); ganancia.gain.setValueAtTime(1, t); }
 }
 function irA(t) {
   relojMusica = t;
   if (!pista) return;
   try { pista.currentTime = t; } catch (e) {}
-  if (musicaOn && !document.hidden) pista.play().catch(() => {});
+  if (musicaOn && !silencio && !document.hidden) pista.play().catch(() => {});
 }
 function arrancarMusica() {
-  crearPista();
+  if (audio && audio.state !== 'running') audio.resume().catch(() => {});
+  crearPista(); devolverVolumen();
   if (musicaOn && pista.paused) irA(relojMusica);
 }
 // Reloj de la música: sigue al audio cuando suena y avanza solo cuando está apagado (el juego igual va al compás).
@@ -312,11 +344,11 @@ function pintarMusica() {
 }
 $('musica').addEventListener('click', () => {
   musicaOn = !musicaOn; guardar('kuriri-musica', musicaOn); pintarMusica();
-  if (musicaOn) arrancarMusica(); else if (pista) { relojMusica = pista.currentTime; pista.pause(); }
+  if (musicaOn) { if (!silencio) arrancarMusica(); } else if (pista) { relojMusica = pista.currentTime; pista.pause(); }
 });
 document.addEventListener('visibilitychange', () => {
   if (!pista) return;
-  if (document.hidden) pista.pause(); else if (musicaOn) pista.play().catch(() => {});
+  if (document.hidden) pista.pause(); else if (musicaOn && !silencio) pista.play().catch(() => {});
 });
 pintarMusica();
 
@@ -534,18 +566,43 @@ addEventListener('keydown', e => {
   if (k === 'Enter' || e.target.id !== 'nombre') { e.preventDefault(); intentarEmpezar(); }
 });
 
+// Espaguetización: Kuriri se vuelve ~90 trozos. Cada uno cae y gira según su propia distancia al agujero
+// (lo más cercano cae y gira más rápido), así el cuerpo solo se estira en un fideo que se enrolla en
+// espiral, se corre al rojo y desaparece en el horizonte. La marea está exagerada para que se vea.
+function crearCaida(dur) {
+  const p = posJugador(), rk = radioKuriri(), color = colorAnillo(s.anillo), r0 = s.pr, partes = [];
+  const trozo = (x, y, col, tam) => {
+    const r = Math.hypot(x - cx, y - cy);
+    // marea: el lado cercano al agujero tira más fuerte que el lejano (exagerada, sin depender de la distancia)
+    const marea = Math.min(2, Math.max(0.45, 1 + (r0 - r) / rk * 0.5)) * (0.9 + Math.random() * 0.2);
+    return {r, a: Math.atan2(y - cy, x - cx), vr: -15, marea,
+            color: col, tam, dentro: false, orden: r};
+  };
+  for (let i = 0; i < 80; i++) {
+    const ang = Math.random() * TAU, d = Math.sqrt(Math.random()) * rk;
+    partes.push(trozo(p.x + Math.cos(ang) * d, p.y + Math.sin(ang) * d, color, 2.2 + Math.random() * 2.2));
+  }
+  const k = rk / 11;
+  for (const sx of [-1, 1]) {                                  // los ojos también se estiran
+    const [ox, oy] = rotar(sx * 4 * k, -2 * k, -camVista);
+    for (let i = 0; i < 5; i++) partes.push(trozo(p.x + ox + (Math.random() - 0.5) * 2, p.y + oy + (Math.random() - 0.5) * 2, C.ink, 1.3));
+  }
+  partes.sort((a, b) => a.orden - b.orden);
+  return {t: 0, dur, r0, r: r0, w: Math.max(2.2, s.w), G: 0.11 * r0 ** 3, partes, destello: 0, listo: false, minimo: r0 / RS, alTerminar: null};
+}
+
 function morir() {
   // El arco rojo no lo destruye: lo empuja al agujero negro. Cae en espiral, las fuerzas de marea
   // lo estiran (espaguetización), su luz se corre al rojo y desaparece en el horizonte de eventos.
-  const DUR = 1.7;
+  const DUR = 3.2;                          // tope: termina antes si todo Kuriri ya cruzó el horizonte
   modo = 'muerto'; muertoEn = performance.now() + DUR * 1000;
   $('habilidades').hidden = true; pintarEfectos(); if (pista) pista.playbackRate = 1;
+  desvanecerMusica(1.6);
   s.congelado = 0.08;                      // hit-stop corto: el golpe
   s.trauma = 0.7; s.flash = menosMovimiento ? 0 : 0.6;
   const p = posJugador();
   particulas(p.x, p.y, 16, C.danger, 200);
-  s.caida = {t: 0, dur: DUR, r0: s.pr, r: s.pr, a: s.a, w: s.w, color: colorAnillo(s.anillo),
-             rastro: [], listo: false, minimo: s.pr / RS, alTerminar: null};
+  s.caida = crearCaida(DUR);
   beep(240, 1.6, 'sawtooth', 0.1, 30); beep(110, 1.8, 'sine', 0.2, 22); vibrar([60, 50, 260]);
   const esRecord = s.puntos > record;
   const nombre = nombreJugador();
@@ -587,12 +644,21 @@ function actualizar(dt, dtReal) {
   s.t += dt;
   if (s.caida && !s.caida.listo) {
     const c = s.caida; c.t += dt;
-    const u = Math.min(1, c.t / c.dur);
-    c.r = RS + (c.r0 - RS) * (1 - u * u);                       // cae cada vez más rápido
-    c.a += Math.min(16, c.w * Math.pow(c.r0 / c.r, 1.5)) * dt;  // y gira más rápido al acercarse (Kepler)
-    c.rastro.push({x: cx + Math.cos(c.a) * c.r, y: cy + Math.sin(c.a) * c.r});
-    if (c.rastro.length > 28) c.rastro.shift();
-    if (u >= 1) {
+    let quedan = 0, rMin = Infinity;
+    for (const q of c.partes) {
+      if (q.dentro) continue;
+      for (let k = 0; k < 3; k++) {
+        const h = dt / 3;
+        q.vr += -c.G / (q.r * q.r) * Math.pow(c.r0 / q.r, 1.5) * q.marea * h;   // gravedad + marea
+        q.r = Math.max(RS * 0.9, q.r + q.vr * h);
+        q.a += Math.min(24, c.w * Math.pow(c.r0 / q.r, 1.5)) * h;              // Kepler: lo de adentro gira más rápido
+      }
+      if (q.r <= RS * 1.03) { q.dentro = true; c.destello = Math.min(1.6, c.destello + 0.07); continue; }
+      quedan++; rMin = Math.min(rMin, q.r);
+    }
+    c.r = quedan ? rMin : RS;
+    c.destello = Math.max(0, c.destello - dt * 1.4);
+    if (!quedan || c.t >= c.dur) {
       c.listo = true; s.flash = menosMovimiento ? 0 : 0.5; s.trauma = Math.min(1, s.trauma + 0.4);
       particulas(cx, cy, 20, C.core, 120); beep(60, 0.5, 'sine', 0.2, 30); vibrar(80);
       c.alTerminar && c.alTerminar();
@@ -781,19 +847,31 @@ function dibujar(tReal) {
       }
     }
     if (s.caida && !s.caida.listo) {
-      const c = s.caida, u = Math.min(1, c.t / c.dur), n = c.rastro.length;
-      // el fideo: más delgado y más rojo mientras más cae (corrimiento al rojo)
-      c.rastro.forEach((e, i) => {
-        const k = (i + 1) / n, r = (1.2 + k * 6) * (1 - u * 0.6);
-        circulo(e.x, e.y, r, c.color, k * 0.6 * (1 - u));
-        circulo(e.x, e.y, r, C.danger, k * 0.6 * u);
-      });
-      // el cuerpo: las fuerzas de marea lo estiran hacia el centro y lo adelgazan
-      const x = cx + Math.cos(c.a) * c.r, y = cy + Math.sin(c.a) * c.r;
-      ctx.save(); ctx.translate(x, y); ctx.rotate(c.a);
-      ctx.scale(1 + u * 5, Math.max(0.15, 1 - u * 0.85));
-      circulo(0, 0, 11, c.color, 1 - u * 0.7, 20); circulo(0, 0, 11, C.danger, u * 0.8, 20);
+      const c = s.caida, vivos = c.partes.filter(q => !q.dentro);
+      const rojo = q => Math.max(0, Math.min(1, 1 - (q.r - RS) / (c.r0 - RS)));   // corrimiento al rojo
+      const pos = q => [cx + Math.cos(q.a) * q.r, cy + Math.sin(q.a) * q.r];
+      // el fideo: se unen los trozos en orden (de lo más cercano al agujero a lo más lejano)
+      ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (let i = 1; i < vivos.length; i++) {
+        const a = vivos[i - 1], b = vivos[i], [x0, y0] = pos(a), [x1, y1] = pos(b);
+        if (Math.hypot(x1 - x0, y1 - y0) > 40) continue;
+        const k = rojo(b);
+        ctx.strokeStyle = k > 0.5 ? C.danger : b.color; ctx.globalAlpha = 0.35 * (1 - 0.5 * k);
+        ctx.lineWidth = Math.max(0.6, b.tam * 1.6 * (1 - 0.7 * k));
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      }
       ctx.restore();
+      for (const q of vivos) {
+        const [x, y] = pos(q), k = rojo(q), tam = q.tam * (1 - 0.55 * k);
+        circulo(x, y, tam, q.color, 0.95 * (1 - k));
+        circulo(x, y, tam, C.danger, 0.9 * k);
+      }
+      // el agujero destella cada vez que se traga un trozo
+      if (c.destello > 0) {
+        circulo(cx, cy, RS * 1.8, '#ff9e3d', 0.22 * Math.min(1, c.destello), 30);
+        arco(RS * 1.12, 0, TAU, '#ffe2b0', 2 + 5 * Math.min(1, c.destello), Math.min(1, 0.4 + c.destello), 30 * Math.min(1, c.destello));
+        circulo(cx, cy, RS, '#000', 1);                                // el horizonte sigue negro
+      }
     }
     for (const q of s.parts) circulo(q.x, q.y, 2.4, q.color, 1 - q.t / q.vida);
   }
@@ -1068,7 +1146,8 @@ if (PRUEBA) {
   window.kuririDiag = () => ({modo, w: s && s.w, t: tiempoMusica(), bpm: bpmEn(tiempoMusica()), sonando: !!sonando(),
     anillos: s && s.nAnillos, anillo: s && s.anillo, R: R.map(r => Math.round(r)), inv: s && s.inv.slice(), efectos: s && {...s.efectos},
     obs: s && s.obs.length, pickup: s && s.pickup && s.pickup.tipo, cam: s && +s.cam.toFixed(2), tGame: s && +s.t.toFixed(1)});
-  window.kuririTruco = {saltarA: t => { s.t = t; }, dar: tipo => { s.inv.push(tipo); pintarHabilidades(); }, escudo: () => { s.efectos.escudo = 999; }, estado: () => s};
+  window.kuririTruco = {saltarA: t => { s.t = t; }, dar: tipo => { s.inv.push(tipo); pintarHabilidades(); }, escudo: () => { s.efectos.escudo = 999; }, estado: () => s, morir: () => morir(),
+    musica: () => ({silencio, pausada: !pista || pista.paused, ganancia: ganancia ? +ganancia.gain.value.toFixed(2) : null})};
 }
 $('jugar').addEventListener('click', () => intentarEmpezar(false));
 $('verIntro').addEventListener('click', () => intentarEmpezar(true));
