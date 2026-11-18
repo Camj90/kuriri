@@ -88,6 +88,18 @@ body.en-intro .hud{visibility:hidden}
 .links{display:flex;justify-content:center;gap:4px;flex-wrap:wrap}
 .link{justify-self:center;background:none;border:0;color:var(--dim);font:600 14px var(--body);text-decoration:underline;
   text-underline-offset:3px;padding:6px 10px;cursor:pointer}
+/* habilidades guardadas (abajo), efectos activos y avisos */
+#habilidades{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);display:flex;justify-content:center;gap:14px;pointer-events:none}
+.hab{pointer-events:auto;width:58px;height:58px;border-radius:50%;font-size:26px;line-height:1;display:grid;place-items:center;padding:0;
+  background:rgba(10,14,30,.7);border:2px solid var(--c,rgba(255,255,255,.2));box-shadow:0 0 18px var(--c,transparent);color:var(--ink);cursor:pointer;
+  touch-action:none;-webkit-user-select:none;user-select:none}
+.hab:disabled{opacity:.35;cursor:default;border-style:dashed;box-shadow:none}
+.hab:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+#efectos{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 88px);text-align:center;font:800 14px var(--display);
+  color:var(--ink);letter-spacing:.06em;pointer-events:none;text-shadow:0 0 8px #000;font-variant-numeric:tabular-nums}
+#aviso{position:fixed;left:16px;right:16px;top:calc(env(safe-area-inset-top,0px) + 92px);text-align:center;font:800 15px var(--display);
+  letter-spacing:.05em;color:var(--spark);pointer-events:none;text-shadow:0 0 12px #000;text-wrap:balance}
+#aviso.entra{animation:entra .35s ease-out}
 *{box-sizing:border-box}html,body{margin:0}[hidden]{display:none!important}
 :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 </style>
@@ -100,17 +112,25 @@ body.en-intro .hud{visibility:hidden}
   <div class="cen"><div class="lbl">Distancia</div><div class="num chico" id="dist">—</div></div>
   <div class="der"><div class="lbl">Récord</div><div class="num" id="record">0</div></div>
 </div>
+<div id="aviso" hidden></div>
+<div id="efectos"></div>
+<div id="habilidades" hidden aria-label="Habilidades guardadas">
+  <button class="hab" type="button" disabled aria-label="Espacio vacío"></button>
+  <button class="hab" type="button" disabled aria-label="Espacio vacío"></button>
+  <button class="hab" type="button" disabled aria-label="Espacio vacío"></button>
+</div>
 <div id="panel">
   <div class="caja">
     <h1>Kuriri aburrido en el espacio</h1>
     <div class="res" id="res" hidden><span class="big" id="final">0</span>chispas · récord <span id="finalRecord">0</span></div>
-    <p id="msg">Kuriri orbita un agujero negro y cae hacia él, cada vez más lento, sin llegar nunca. <b>Toca la pantalla</b> para saltar entre la órbita interior y la exterior. Junta chispas y esquiva los arcos rojos: si chocas, Kuriri cae al centro y se estira como espagueti.</p>
-    <div class="leyenda"><span><i style="background:var(--spark)"></i>chispa</span><span><i style="background:var(--danger)"></i>peligro</span></div>
+    <p id="msg">Kuriri orbita un agujero negro y cae hacia él sin llegar nunca. <b>Desliza ↑</b> para acercarte al agujero y <b>↓</b> para alejarte, o toca arriba o abajo (en PC: <b>W</b> y <b>S</b>). Junta chispas, guarda hasta 3 habilidades y úsalas tocándolas (en PC: <b>E</b>, 1-3 o clic). Si chocas con un arco rojo, Kuriri se hace espagueti.</p>
+    <div class="leyenda"><span><i style="background:var(--spark)"></i>chispa</span><span><i style="background:var(--danger)"></i>peligro</span><span><i style="background:#5dff9e"></i>habilidad</span></div>
     <div class="campo"><label for="nombre">Tu nombre de jugador</label>
       <input id="nombre" type="text" maxlength="12" autocomplete="nickname" placeholder="Escribe tu nombre" enterkeyhint="go"></div>
     <button id="jugar" type="button">JUGAR</button>
     <div class="links"><button id="verIntro" class="link" type="button">Ver la intro</button>
-      <button id="musica" class="link" type="button" aria-pressed="true">Música: sí</button></div>
+      <button id="musica" class="link" type="button" aria-pressed="true">Música: sí</button>
+      <button id="camara" class="link" type="button" aria-pressed="true">Cámara: gira</button></div>
     <div class="top"><h2>Top 5</h2><ol id="top"></ol><p class="estado" id="estadoTop"></p></div>
   </div>
 </div>
@@ -137,8 +157,8 @@ function ajustar() {
   W = innerWidth; H = innerHeight;
   cv.width = W * dpr; cv.height = H * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  cx = W / 2; cy = H / 2 + 20;
-  const m = Math.min(W, H - 80);
+  cx = W / 2; cy = H / 2;
+  const m = Math.min(W, H - 240);                 // deja espacio arriba (marcador) y abajo (habilidades)
   RB = [m * 0.21, m * 0.38]; RS = m * 0.05; R = RB.slice();
 }
 // Caída de Zenón: lo que falta por caer es 1/(1 + t/25). A los 25 s recorrió la mitad, a los 75 s
@@ -266,6 +286,7 @@ const tiempoMusica = () => sonando() ? pista.currentTime : relojMusica;
 function crearPista() {
   if (pista) return;
   pista = new Audio(TEMA); pista.preload = 'auto'; pista.volume = 0.6;
+  pista.preservesPitch = pista.mozPreservesPitch = pista.webkitPreservesPitch = false;   // más lenta = más grave
   // al terminar: en medio de una partida sigue desde «el espacio»; en el menú vuelve al comienzo
   pista.addEventListener('ended', () => irA(modo === 'juego' || modo === 'muerto' ? SECCION.espacio : 0));
 }
@@ -299,35 +320,141 @@ document.addEventListener('visibilitychange', () => {
 });
 pintarMusica();
 
+// Pulso de la música (1 justo en cada tiempo, cae a 0 antes del siguiente): para que el zoom lata al compás.
+function pulsoEn(t) {
+  t = ((t % DURACION) + DURACION) % DURACION;
+  let a = 0, b = COMPASES.length - 1;
+  while (b - a > 1) { const m = (a + b) >> 1; if (COMPASES[m][0] <= t) a = m; else b = m; }
+  const fr = (t - COMPASES[a][0]) / (COMPASES[a + 1][0] - COMPASES[a][0]) * 4;
+  return Math.exp(-(fr % 1) * 7);
+}
+// Cámara del jugador: el universo gira para que Kuriri quede siempre abajo (se puede fijar si marea demasiado).
+let camaraGira = leer('kuriri-camara', true) !== false;
+function pintarCamara() {
+  $('camara').textContent = camaraGira ? 'Cámara: gira' : 'Cámara: fija';
+  $('camara').setAttribute('aria-pressed', camaraGira);
+}
+$('camara').addEventListener('click', () => { camaraGira = !camaraGira; guardar('kuriri-camara', camaraGira); pintarCamara(); });
+pintarCamara();
+
 function vibrar(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} }
 
 // ---------- estado ----------
 let modo = 'menu', s = null, muertoEn = 0;
 const angDif = (a, b) => { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
 
+// ---------- anillos ----------
+const COLORES = ['#3de0ff', '#b46bff', '#5dff9e', '#ff7ad9', '#7aa2ff'];
+const colorAnillo = i => COLORES[i % COLORES.length];
+// Más anillos con el tiempo: 2 al empezar, 3 a los 25 s, 4 a los 55 s y 5 a los 90 s.
+const anillosEn = t => t < 25 ? 2 : t < 55 ? 3 : t < 90 ? 4 : 5;
+function radiosN(t, n) {
+  const [r0, r1] = radios(t);
+  if (n <= 2) return [r0, r1];
+  const minimo = Math.max(26, Math.min(W, H) * 0.072);
+  let sep = Math.max(minimo, (r1 - r0) * (1 - 0.14 * (n - 2)));
+  const tope = Math.min(W * 0.47, H / 2 - 115);              // que todos quepan sin tapar marcador ni habilidades
+  if (r0 + sep * (n - 1) > tope) sep = Math.max(minimo * 0.9, (tope - r0) / (n - 1));
+  return Array.from({length: n}, (_, i) => r0 + sep * i);
+}
+const escala = () => 1 - 0.12 * (s.nAnillos - 2);           // con más anillos, obstáculos y Kuriri más chicos
+const radioKuriri = () => 11 * (1 - 0.07 * (s.nAnillos - 2));
+
 function nuevo() {
-  R = radios(0);
+  R = radiosN(0, 2);
   s = {caida: null, a: -Math.PI / 2, anillo: 0, pr: R[0], w: 1.7, t: 0, puntos: 0, obs: [], chispa: null,
-       cuenta: 0.9, parts: [], estela: [], trauma: 0, congelado: 0, tShake: 0, flash: 0};
-  nuevaChispa();
+       cuenta: 0.9, parts: [], estela: [], trauma: 0, congelado: 0, tShake: 0, flash: 0,
+       nAnillos: 2, nace: [-9, -9], cam: 0, inv: [], efectos: {}, pickup: null, cuentaHab: 14};
+  nuevaChispa(); pintarHabilidades(); pintarEfectos();
 }
 
+const libre = (anillo, a, margen) => !s.obs.some(o => o.anillo === anillo && Math.abs(angDif(a, o.a)) < o.medio + margen);
 function nuevaChispa() {
-  for (let i = 0; i < 12; i++) {
-    const c = {anillo: Math.random() < 0.5 ? 0 : 1, a: s.a + s.w * (0.9 + Math.random() * 1.8)};
-    if (!s.obs.some(o => o.anillo === c.anillo && Math.abs(angDif(c.a, o.a)) < o.medio + 0.25)) { s.chispa = c; return; }
+  for (let i = 0; i < 16; i++) {
+    const c = {anillo: Math.floor(Math.random() * s.nAnillos), a: s.a + s.w * (0.9 + Math.random() * 1.8)};
+    if (libre(c.anillo, c.a, 0.25)) { s.chispa = c; return; }
   }
-  s.chispa = {anillo: 1 - s.anillo, a: s.a + Math.PI};
+  s.chispa = {anillo: (s.anillo + 1) % s.nAnillos, a: s.a + Math.PI};
 }
 
 function nuevoObstaculo() {
-  const anillo = Math.random() < 0.5 ? 0 : 1;
-  const a = s.a + s.w * (0.9 + Math.random() * 1.4);
-  const medio = 0.17 + Math.random() * 0.13;
-  // Justo: nunca los dos anillos tapados en el mismo ángulo.
-  if (s.obs.some(o => o.anillo !== anillo && Math.abs(angDif(a, o.a)) < medio + o.medio + 0.35)) return;
-  s.obs.push({anillo, a, medio, nace: s.t, aviso: 0.55, vida: 2.4 + Math.random() * 1.6});
+  const n = s.nAnillos, anillo = Math.floor(Math.random() * n);
+  if (s.t - s.nace[anillo] < 1.5) return;                    // un anillo recién creado no trae peligros al tiro
+  const a = s.a + s.w * (1.1 + Math.random() * 1.3);
+  // cada obstáculo es una estrella que cae y choca contra el anillo: las grandes dejan barras grandes
+  const grande = Math.random() < 0.35;
+  const medio = (grande ? 0.26 + Math.random() * 0.08 : 0.1 + Math.random() * 0.07) * escala();
+  // Justo: en cualquier ángulo queda al menos un anillo libre (dos si hay 4 o más).
+  const tapados = new Set([anillo]);
+  for (const o of s.obs) if (Math.abs(angDif(a, o.a)) < medio + o.medio + 0.35) tapados.add(o.anillo);
+  if (tapados.size > n - (n >= 4 ? 2 : 1)) return;
+  s.obs.push({anillo, a, medio, grande, nace: s.t, aviso: 0.85, giro: 0.5 + Math.random() * 0.7, choco: false,
+              vida: 2.6 + Math.random() * 1.6});
 }
+
+// ---------- habilidades: se recogen en el camino, se guardan hasta 3 y se usan cuando uno quiere ----------
+const HAB = {
+  iman:   {icono: '🧲', nombre: 'Imán', dur: 8, color: '#5dff9e', desde: 0, peso: 3},
+  doble:  {icono: '✨', nombre: 'Chispas ×2', dur: 8, color: '#ffd54a', desde: 10, peso: 3},
+  lento:  {icono: '⏳', nombre: 'Tiempo lento', dur: 6, color: '#7aa2ff', desde: 20, peso: 2},
+  escudo: {icono: '🛡️', nombre: 'Inmortal', dur: 5, color: '#ffe2b0', desde: 30, peso: 2},
+  pulso:  {icono: '💥', nombre: 'Pulso', dur: 0, color: '#ff7ad9', desde: 45, peso: 1.5},
+};
+const LENTO = 0.7;                                           // el tiempo lento también frena (y agrava) la música
+function elegirHabilidad() {
+  // mientras más avanza la partida, más pesan las habilidades poderosas
+  const lista = Object.entries(HAB).filter(([, h]) => s.t >= h.desde)
+    .map(([k, h]) => [k, h.peso * (1 + Math.max(0, s.t - h.desde) / 60)]);
+  let r = Math.random() * lista.reduce((a, [, w]) => a + w, 0);
+  for (const [k, w] of lista) if ((r -= w) <= 0) return k;
+  return lista[0][0];
+}
+function nuevaHabilidadEnCamino() {
+  for (let i = 0; i < 12; i++) {
+    const h = {tipo: elegirHabilidad(), anillo: Math.floor(Math.random() * s.nAnillos), a: s.a + s.w * (1.2 + Math.random() * 1.8), nace: s.t};
+    if (libre(h.anillo, h.a, 0.3)) { s.pickup = h; return; }
+  }
+}
+function usar(i) {
+  if (modo !== 'juego' || !s || !s.inv[i]) return;
+  const tipo = s.inv.splice(i, 1)[0], h = HAB[tipo], p = posJugador();
+  if (tipo === 'pulso') {
+    for (const o of s.obs) particulas(cx + Math.cos(o.a) * R[o.anillo], cy + Math.sin(o.a) * R[o.anillo], 8, C.danger, 160);
+    s.obs = []; s.flash = menosMovimiento ? 0 : 0.3; s.trauma = Math.min(1, s.trauma + 0.5);
+    beep(90, 0.7, 'sawtooth', 0.12, 1200); vibrar(60);
+  } else {
+    s.efectos[tipo] = h.dur;
+    beep(520, 0.25, 'triangle', 0.1, 1320);
+  }
+  particulas(p.x, p.y, 14, h.color, 180);
+  avisar(`${h.icono} ${h.nombre}`);
+  pintarHabilidades();
+}
+function pintarHabilidades() {
+  document.querySelectorAll('.hab').forEach((b, i) => {
+    const t = s && s.inv[i];
+    b.textContent = t ? HAB[t].icono : '';
+    b.disabled = !t;
+    b.style.setProperty('--c', t ? HAB[t].color : '');
+    b.setAttribute('aria-label', t ? `Usar ${HAB[t].nombre}` : 'Espacio vacío');
+  });
+}
+let textoEfectos = '';
+function pintarEfectos() {
+  const t = s && modo === 'juego' ? Object.entries(s.efectos).map(([k, v]) => `${HAB[k].icono} ${v.toFixed(1)}`).join('    ') : '';
+  if (t !== textoEfectos) { textoEfectos = t; $('efectos').textContent = t; }
+}
+let avisoT = 0;
+function avisar(txt) {
+  const el = $('aviso'); el.textContent = txt; el.hidden = false;
+  el.classList.remove('entra'); void el.offsetWidth; el.classList.add('entra');
+  clearTimeout(avisoT); avisoT = setTimeout(() => { el.hidden = true; }, 1700);
+}
+document.querySelectorAll('.hab').forEach((b, i) => {
+  // clic izquierdo o derecho (o toque) sobre la habilidad la usa
+  b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); usar(i); });
+  b.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); });
+});
 
 function particulas(x, y, n, color, vel = 160) {
   for (let i = 0; i < n; i++) {
@@ -342,6 +469,7 @@ const posJugador = () => ({x: cx + Math.cos(s.a) * s.pr, y: cy + Math.sin(s.a) *
 function empezar() {
   nuevo(); modo = 'juego';
   $('panel').hidden = true; $('puntos').textContent = '0';
+  $('habilidades').hidden = false; if (pista) pista.playbackRate = 1;
   beep(440, 0.12, 'triangle', 0.1, 880);
 }
 function intentarEmpezar(conIntro = false) {
@@ -355,22 +483,55 @@ function intentarEmpezar(conIntro = false) {
   if (conIntro || esNuevo) { irA(Math.max(0, SECCION.sueno - FIN_INTRO)); empezarIntro(esNuevo); }
   else { irA(SECCION.sueno); empezar(); }
 }
-function tocar(e) {
-  if (modo === 'intro') { if (e && e.target.id !== 'saltar') { e.preventDefault(); siguienteEscena(); } return; }
-  if (modo !== 'juego') return;            // fuera del juego, los toques son del panel (nombre y botón)
-  if (e) e.preventDefault();
-  {
-    s.anillo = 1 - s.anillo;
-    const p = posJugador();
-    particulas(p.x, p.y, 4, s.anillo ? C.outer : C.inner, 90);
-    beep(s.anillo ? 330 : 520, 0.05, 'square', 0.04);
-  }
+// Moverse entre anillos desde la perspectiva del jugador: Kuriri queda abajo y el agujero arriba,
+// así que «arriba» (deslizar ↑, W, ↑) es hacia el agujero y «abajo» (↓, S) es alejarse.
+function moverAnillo(dir, callado = false) {
+  const nuevo = s.anillo + dir;
+  if (nuevo < 0 || nuevo >= s.nAnillos) { if (!callado) beep(140, 0.05, 'square', 0.03); return false; }
+  s.anillo = nuevo;
+  const p = posJugador();
+  particulas(p.x, p.y, 4, colorAnillo(s.anillo), 90);
+  beep(dir < 0 ? 520 : 330, 0.05, 'square', 0.04);
+  return true;
 }
-addEventListener('pointerdown', tocar, {passive: false});
+// Toque corto: arriba de la pantalla sube, abajo baja; si ya está en el borde, va al otro lado (con 2 anillos, cualquier toque cambia).
+function tocarPantalla(y) { const dir = y < H / 2 ? -1 : 1; if (!moverAnillo(dir, true)) moverAnillo(-dir); }
+
+let toque = null;
+addEventListener('pointerdown', e => {
+  if (modo === 'intro') { if (e.target.id !== 'saltar') { e.preventDefault(); siguienteEscena(); } return; }
+  if (modo !== 'juego' || e.button > 0 || (e.target.closest && e.target.closest('#habilidades'))) return;
+  e.preventDefault();
+  toque = {id: e.pointerId, y: e.clientY, usado: false};
+}, {passive: false});
+addEventListener('pointermove', e => {
+  if (!toque || e.pointerId !== toque.id || modo !== 'juego') return;
+  const dy = e.clientY - toque.y;
+  if (Math.abs(dy) > 28) { moverAnillo(dy < 0 ? -1 : 1); toque.y = e.clientY; toque.usado = true; }   // se puede seguir deslizando
+}, {passive: false});
+addEventListener('pointerup', e => {
+  if (!toque || e.pointerId !== toque.id) return;
+  if (!toque.usado && modo === 'juego') tocarPantalla(e.clientY);
+  toque = null;
+});
+addEventListener('pointercancel', () => { toque = null; });
+addEventListener('contextmenu', e => { if (modo === 'juego') { e.preventDefault(); usar(0); } });   // clic derecho: primera habilidad
 addEventListener('keydown', e => {
-  if (e.code !== 'Space' && e.code !== 'Enter') return;
-  if (modo === 'juego' || modo === 'intro') tocar(e);
-  else if (e.code === 'Enter' || e.target.id !== 'nombre') { e.preventDefault(); intentarEmpezar(); }
+  const k = e.code;
+  if (modo === 'intro') {
+    if ((k === 'Space' || k === 'Enter') && e.target.id !== 'saltar') { e.preventDefault(); siguienteEscena(); }
+    return;
+  }
+  if (modo === 'juego') {
+    if (k === 'KeyW' || k === 'ArrowUp') { e.preventDefault(); moverAnillo(-1); }
+    else if (k === 'KeyS' || k === 'ArrowDown') { e.preventDefault(); moverAnillo(1); }
+    else if (k === 'Space') { e.preventDefault(); if (!moverAnillo(-1, true)) moverAnillo(1); }
+    else if (k === 'KeyE') usar(0);
+    else if (/^Digit[123]$/.test(k)) usar(+k.slice(5) - 1);
+    return;
+  }
+  if (k !== 'Space' && k !== 'Enter') return;
+  if (k === 'Enter' || e.target.id !== 'nombre') { e.preventDefault(); intentarEmpezar(); }
 });
 
 function morir() {
@@ -378,11 +539,12 @@ function morir() {
   // lo estiran (espaguetización), su luz se corre al rojo y desaparece en el horizonte de eventos.
   const DUR = 1.7;
   modo = 'muerto'; muertoEn = performance.now() + DUR * 1000;
+  $('habilidades').hidden = true; pintarEfectos(); if (pista) pista.playbackRate = 1;
   s.congelado = 0.08;                      // hit-stop corto: el golpe
   s.trauma = 0.7; s.flash = menosMovimiento ? 0 : 0.6;
   const p = posJugador();
   particulas(p.x, p.y, 16, C.danger, 200);
-  s.caida = {t: 0, dur: DUR, r0: s.pr, r: s.pr, a: s.a, w: s.w, color: s.anillo ? C.outer : C.inner,
+  s.caida = {t: 0, dur: DUR, r0: s.pr, r: s.pr, a: s.a, w: s.w, color: colorAnillo(s.anillo),
              rastro: [], listo: false, minimo: s.pr / RS, alTerminar: null};
   beep(240, 1.6, 'sawtooth', 0.1, 30); beep(110, 1.8, 'sine', 0.2, 22); vibrar([60, 50, 260]);
   const esRecord = s.puntos > record;
@@ -437,7 +599,15 @@ function actualizar(dt, dtReal) {
     }
   }
   if (modo === 'juego') {
-    R = radios(s.t);
+    // más anillos con el tiempo (el nuevo aparece por fuera y se acomoda)
+    const nObj = anillosEn(s.t);
+    if (nObj > s.nAnillos) {
+      s.nace[s.nAnillos] = s.t; s.nAnillos = nObj;
+      avisar('¡Nuevo anillo! Desliza ↑ ↓  (W / S)'); beep(330, 0.4, 'triangle', 0.1, 990);
+    }
+    const obj = radiosN(s.t, s.nAnillos);
+    for (let i = 0; i < obj.length; i++) R[i] = R[i] === undefined ? obj[i] + 40 : R[i] + (obj[i] - R[i]) * Math.min(1, dt * 3);
+    R.length = obj.length;
     // Más cerca del agujero negro, órbita más rápida (Kepler: ω ∝ r^-1.5, aquí suavizado).
     const kepler = Math.min(1.5, Math.sqrt(RB[0] / R[0]));
     s.w = TAU * bpmEn(tiempoMusica()) / 60 / PULSOS_POR_VUELTA * kepler;   // al ritmo de la música
@@ -445,25 +615,57 @@ function actualizar(dt, dtReal) {
     s.pr += (R[s.anillo] - s.pr) * Math.min(1, dt * 16);
     const p = posJugador();
     s.estela.push({x: p.x, y: p.y}); if (s.estela.length > 14) s.estela.shift();
+    // cámara del jugador: el universo gira para dejar a Kuriri abajo
+    if (camaraGira && !menosMovimiento) s.cam += angDif(Math.PI / 2 - s.a, s.cam) * Math.min(1, dt * 5);
+    // los efectos duran segundos reales (el tiempo lento no los alarga)
+    for (const k in s.efectos) { s.efectos[k] -= dtReal; if (s.efectos[k] <= 0) delete s.efectos[k]; }
+    const rate = s.efectos.lento ? LENTO : 1;
+    if (pista && pista.playbackRate !== rate) pista.playbackRate = rate;
 
     s.cuenta -= dt;
-    if (s.cuenta <= 0) { nuevoObstaculo(); s.cuenta = Math.max(0.4, 1.1 - s.t * 0.012); }
+    if (s.cuenta <= 0) { nuevoObstaculo(); s.cuenta = Math.max(0.3, (1.1 - s.t * 0.012) / (1 + 0.3 * (s.nAnillos - 2))); }
     s.obs = s.obs.filter(o => s.t - o.nace < o.vida + 0.35);
+    for (const o of s.obs) if (!o.choco && s.t - o.nace >= o.aviso && R[o.anillo] !== undefined) {
+      o.choco = true;
+      const x = cx + Math.cos(o.a) * R[o.anillo], y = cy + Math.sin(o.a) * R[o.anillo];
+      particulas(x, y, o.grande ? 18 : 8, C.danger, o.grande ? 220 : 140);
+      particulas(x, y, o.grande ? 8 : 3, '#ffe9c4', 160);
+      s.trauma = Math.min(1, s.trauma + (o.grande ? 0.22 : 0.07));
+      beep(o.grande ? 95 : 180, o.grande ? 0.35 : 0.15, 'sawtooth', o.grande ? 0.07 : 0.035, 40);
+    }
 
-    for (const o of s.obs) {
+    if (!s.efectos.escudo) for (const o of s.obs) {
       const edad = s.t - o.nace;
       if (edad < o.aviso || edad > o.vida) continue;
-      if (Math.abs(s.pr - R[o.anillo]) < 10 && Math.abs(angDif(s.a, o.a)) < o.medio + 8 / R[o.anillo]) { morir(); break; }
+      if (Math.abs(s.pr - R[o.anillo]) < 9 && Math.abs(angDif(s.a, o.a)) < o.medio + radioKuriri() * 0.7 / R[o.anillo]) { morir(); break; }
     }
     const c = s.chispa;
+    // imán: la chispa que viene cerca se pasa al anillo de Kuriri
+    if (c && s.efectos.iman) { const d = angDif(c.a, s.a); if (d > 0 && d < 1.5 && c.anillo !== s.anillo) { c.anillo = s.anillo; c.iman = 0.4; } }
     if (modo === 'juego' && c && Math.abs(s.pr - R[c.anillo]) < 14 && Math.abs(angDif(s.a, c.a)) < 16 / R[c.anillo]) {
-      s.puntos++;
+      s.puntos += s.efectos.doble ? 2 : 1;
       const el = $('puntos'); el.textContent = s.puntos; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
       particulas(cx + Math.cos(c.a) * R[c.anillo], cy + Math.sin(c.a) * R[c.anillo], 10, C.spark, 150);
       s.trauma = Math.min(1, s.trauma + 0.15);       // tier chico
       beep(880 + Math.min(s.puntos, 20) * 25, 0.09, 'triangle', 0.1, 1320);
       nuevaChispa();
     }
+    // habilidades en el camino: aparecen más seguido mientras más dura la partida
+    s.cuentaHab -= dt;
+    if (!s.pickup && s.cuentaHab <= 0) { nuevaHabilidadEnCamino(); s.cuentaHab = Math.max(7, 16 - s.t * 0.06) + Math.random() * 4; }
+    const h = s.pickup;
+    if (h && modo === 'juego') {
+      if (s.t - h.nace > 14 || h.anillo >= s.nAnillos) s.pickup = null;
+      else if (Math.abs(s.pr - R[h.anillo]) < 14 && Math.abs(angDif(s.a, h.a)) < 18 / R[h.anillo]) {
+        if (s.inv.length < 3) {
+          s.inv.push(h.tipo); s.pickup = null;
+          particulas(cx + Math.cos(h.a) * R[h.anillo], cy + Math.sin(h.a) * R[h.anillo], 14, HAB[h.tipo].color, 170);
+          beep(990, 0.15, 'triangle', 0.12, 1480);
+          avisar(`${HAB[h.tipo].icono} ${HAB[h.tipo].nombre} guardada`); pintarHabilidades();
+        } else if (!h.lleno) { h.lleno = true; avisar('Ya tienes 3: usa una (tócala o E)'); }
+      }
+    }
+    pintarEfectos();
   }
   for (const q of s.parts) { q.t += dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.96; q.vy *= 0.96; }
   s.parts = s.parts.filter(q => q.t < q.vida);
@@ -481,18 +683,29 @@ function circulo(x, y, r, color, alfa = 1, brillo = 0) {
   ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); ctx.restore();
 }
 
+// Kuriri: los ojos quedan derechos en la pantalla aunque el universo gire.
+const rotar = (x, y, a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
+let camVista = 0;
+
 function dibujar(tReal) {
   if (intro) { dibujarIntro(tReal); return; }
   ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
   const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
   g.addColorStop(0, C.bg2); g.addColorStop(1, C.bg);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const prog = s ? 1 - 1 / (1 + s.t / T_CAIDA) : 0;          // cuánto ha caído (0 → 1, nunca llega)
 
   ctx.save();
   if (s && !menosMovimiento) {
     const k = s.trauma * s.trauma;              // temblor = trauma² con senos sumados (sin zumbido)
     ctx.translate(12 * k * Math.sin(s.tShake * 1.7), 9 * k * Math.sin(s.tShake * 2.3));
   }
+  // cámara: gira con el jugador (con un leve vaivén que marea más mientras más cae) y hace zoom al agujero,
+  // latiendo con cada tiempo de la música
+  camVista = s && camaraGira && !menosMovimiento ? s.cam + Math.sin(tReal * 0.7) * 0.06 * prog : 0;
+  let zoom = 1 + 0.16 * prog + (s && modo === 'juego' && !menosMovimiento ? 0.014 * pulsoEn(tiempoMusica()) : 0);
+  zoom = Math.min(zoom, Math.max(1, Math.min(W / 2 - 8, H / 2 - 105) / (R[R.length - 1] + 16)));
+  ctx.translate(cx, cy); ctx.rotate(camVista); ctx.scale(zoom, zoom); ctx.translate(-cx, -cy);
 
   // estrellas que caen en espiral
   ctx.fillStyle = C.ink;
@@ -501,41 +714,71 @@ function dibujar(tReal) {
     ctx.fillRect(cx + Math.cos(e.a) * e.r, cy + Math.sin(e.a) * e.r, e.z, e.z);
   }
   ctx.globalAlpha = 1;
+  dibujarCaida(prog);
   dibujarAgujero(tReal);
 
-  // órbitas
+  // órbitas (la nueva aparece de a poco)
   const enJuego = s && modo === 'juego';
-  arco(R[0], 0, TAU, C.inner, 2, enJuego && s.anillo === 0 ? 0.7 : 0.25, enJuego && s.anillo === 0 ? 12 : 0);
-  arco(R[1], 0, TAU, C.outer, 2, enJuego && s.anillo === 1 ? 0.7 : 0.25, enJuego && s.anillo === 1 ? 12 : 0);
+  R.forEach((r, i) => {
+    const activa = enJuego && s.anillo === i, aparece = s ? Math.min(1, (s.t - (s.nace[i] ?? -9)) / 1.2) : 1;
+    arco(r, 0, TAU, colorAnillo(i), 2, (activa ? 0.7 : 0.25) * aparece, activa ? 12 : 0);
+  });
 
   if (s) {
+    const esc = escala();
     // obstáculos: parpadean mientras avisan, luego queman
     for (const o of s.obs) {
       const edad = s.t - o.nace, r = R[o.anillo];
+      if (r === undefined) continue;
       if (edad < o.aviso) {
-        arco(r, o.a - o.medio, o.a + o.medio, C.danger, 6, 0.25 + 0.25 * Math.sin(edad * 40), 0);
+        // marca tenue donde va a chocar + la estrella que cae (acelera, en espiral) con su estela
+        arco(r, o.a - o.medio, o.a + o.medio, C.danger, 3 * esc, 0.15 + 0.15 * Math.sin(edad * 30), 0);
+        const u = edad / o.aviso, r0 = Math.hypot(W, H) * 0.62, tam = (o.grande ? 6.5 : 3.2) * (0.8 + 0.2 * esc);
+        const pos = k => { const rr = r + (r0 - r) * (1 - k * k), aa = o.a - (1 - k) * o.giro; return [cx + Math.cos(aa) * rr, cy + Math.sin(aa) * rr]; };
+        for (let j = 7; j >= 1; j--) { const [x, y] = pos(Math.max(0, u - j * 0.03)); circulo(x, y, tam * (1 - j / 9), '#ffd9a8', 0.07 * (8 - j)); }
+        const [x, y] = pos(u);
+        circulo(x, y, tam, '#fff4dc', 1, 14 + tam * 2.5);
       } else {
         const fin = Math.max(0, Math.min(1, (o.vida + 0.35 - edad) / 0.35));
-        arco(r, o.a - o.medio, o.a + o.medio, C.danger, 14, fin, 18);
+        const golpe = Math.max(0, 1 - (edad - o.aviso) / 0.25);        // la barra nace ancha y se asienta
+        arco(r, o.a - o.medio, o.a + o.medio, C.danger, 14 * esc * (1 + 0.7 * golpe), fin, 18 + 20 * golpe);
       }
     }
     // chispa
-    if (s.chispa) {
+    if (s.chispa && R[s.chispa.anillo] !== undefined) {
       const c = s.chispa, x = cx + Math.cos(c.a) * R[c.anillo], y = cy + Math.sin(c.a) * R[c.anillo];
       ctx.save(); ctx.translate(x, y); ctx.rotate(tReal * 3);
-      ctx.fillStyle = C.spark; ctx.shadowColor = C.spark; ctx.shadowBlur = 16;
+      ctx.fillStyle = C.spark; ctx.shadowColor = C.spark; ctx.shadowBlur = s.efectos.iman ? 28 : 16;
       ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(6, 0); ctx.lineTo(0, 8); ctx.lineTo(-6, 0); ctx.closePath(); ctx.fill();
       ctx.restore();
     }
+    // habilidad en el camino: burbuja de color con su ícono derecho
+    if (s.pickup && R[s.pickup.anillo] !== undefined) {
+      const h = s.pickup, x = cx + Math.cos(h.a) * R[h.anillo], y = cy + Math.sin(h.a) * R[h.anillo];
+      const lat = 1 + 0.12 * Math.sin(tReal * 6), vida = Math.min(1, (14 - (s.t - h.nace)) / 1.5);
+      circulo(x, y, 14 * lat, HAB[h.tipo].color, 0.28 * vida, 22);
+      ctx.save(); ctx.globalAlpha = vida; ctx.strokeStyle = HAB[h.tipo].color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, 14 * lat, 0, TAU); ctx.stroke();
+      ctx.translate(x, y); ctx.rotate(-camVista);
+      ctx.font = '16px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(HAB[h.tipo].icono, 0, 1); ctx.restore();
+    }
     // nave y estela
     if (modo === 'juego' || (modo === 'muerto' && s.congelado > 0)) {
-      const color = s.anillo ? C.outer : C.inner;
+      const color = colorAnillo(s.anillo), rk = radioKuriri();
       s.estela.forEach((e, i) => circulo(e.x, e.y, 2 + i * 0.4, color, i / s.estela.length * 0.5));
       const p = posJugador();
-      circulo(p.x, p.y, 11, color, 1, 20);
-      const dx = -Math.sin(s.a) * 3, dy = Math.cos(s.a) * 3;
-      circulo(p.x - 4 + dx, p.y - 2 + dy, 2.6, C.ink, 1);
-      circulo(p.x + 4 + dx, p.y - 2 + dy, 2.6, C.ink, 1);
+      circulo(p.x, p.y, rk, color, 1, 20);
+      if (s.efectos.escudo) {                                  // inmortal: aura dorada (parpadea al final)
+        const queda = s.efectos.escudo, ve = queda > 1.2 || Math.sin(tReal * 30) > 0;
+        if (ve) { ctx.save(); ctx.strokeStyle = '#ffe2b0'; ctx.lineWidth = 3; ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 18;
+          ctx.beginPath(); ctx.arc(p.x, p.y, rk + 6 + Math.sin(tReal * 8) * 1.5, 0, TAU); ctx.stroke(); ctx.restore(); }
+      }
+      const k = rk / 11, mira = [-Math.sin(s.a) * 2.5 * k, Math.cos(s.a) * 2.5 * k];
+      for (const sx of [-1, 1]) {
+        const [ox, oy] = rotar(sx * 4 * k, -2 * k, -camVista);
+        circulo(p.x + ox + mira[0], p.y + oy + mira[1], 2.6 * k, C.ink, 1);
+      }
     }
     if (s.caida && !s.caida.listo) {
       const c = s.caida, u = Math.min(1, c.t / c.dur), n = c.rastro.length;
@@ -556,7 +799,40 @@ function dibujar(tReal) {
   }
   ctx.restore();
 
+  if (s) {                                                     // viñeta de túnel: se cierra mientras más cae
+    const v = ctx.createRadialGradient(cx, cy, Math.min(W, H) * 0.3, cx, cy, Math.max(W, H) * 0.75);
+    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, `rgba(0,0,0,${0.3 + 0.35 * prog})`);
+    ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  }
+  if (s && s.efectos.lento) { ctx.fillStyle = 'rgba(122,162,255,0.10)'; ctx.fillRect(0, 0, W, H); }
   if (s && s.flash > 0) { ctx.fillStyle = C.danger; ctx.globalAlpha = s.flash * 0.35; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+}
+
+// Sensación de caer: ondas que se van hacia el centro y brazos en espiral, más rápidos mientras más cae.
+let relojVisual = 0;
+function dibujarCaida(prog) {
+  if (menosMovimiento) return;
+  const max = Math.hypot(W, H) * 0.62, t = relojVisual;
+  ctx.save(); ctx.strokeStyle = '#8f6bff'; ctx.lineWidth = 1.5;
+  const vel = 0.05 + 0.2 * prog;
+  for (let k = 0; k < 8; k++) {
+    const f = 1 - ((k / 8 + t * vel) % 1), r = RS * 1.3 + (max - RS * 1.3) * f * f;
+    ctx.globalAlpha = 0.03 + 0.12 * (1 - f) * (0.4 + prog);
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.stroke();
+  }
+  ctx.strokeStyle = '#ff9e3d'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  for (let b = 0; b < 3; b++) {
+    ctx.globalAlpha = 0.04 + 0.06 * prog;
+    ctx.beginPath();
+    for (let j = 0; j <= 48; j++) {
+      const r = RS * 1.3 * Math.exp(j * 0.065), ang = b * TAU / 3 - t * (0.25 + 0.7 * prog) + j * 0.16;
+      if (r > max) break;
+      const x = cx + Math.cos(ang) * r, y = cy + Math.sin(ang) * r;
+      if (j) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // ---------- agujero negro ----------
@@ -776,17 +1052,24 @@ function dibujarIntro(t) {
 let antes = performance.now(), textoDist = '';
 function cuadro(ahora) {
   const dtReal = Math.min((ahora - antes) / 1000, 1 / 30); antes = ahora;
-  avanzarReloj(dtReal);
-  moverEstrellas(dtReal);
+  const lento = s && modo === 'juego' && s.efectos.lento ? LENTO : 1;   // tiempo lento: todo va más despacio
+  avanzarReloj(dtReal * lento);
+  moverEstrellas(dtReal * lento);
+  relojVisual += dtReal * lento;
   if (intro) actualizarIntro(dtReal);
-  if (s) actualizar(dtReal, dtReal);
+  if (s) actualizar(dtReal * lento, dtReal);
   const txt = s ? ((s.caida ? s.caida.r : s.pr) / RS).toFixed(2) + ' rₛ' : '—';
   if (txt !== textoDist) { textoDist = txt; $('dist').textContent = txt; }
   dibujar(ahora / 1000);
   requestAnimationFrame(cuadro);
 }
 // Solo en modo prueba: deja ver el tempo y la velocidad de giro desde la consola.
-if (PRUEBA) window.kuririDiag = () => ({modo, w: s && s.w, t: tiempoMusica(), bpm: bpmEn(tiempoMusica()), sonando: !!sonando()});
+if (PRUEBA) {
+  window.kuririDiag = () => ({modo, w: s && s.w, t: tiempoMusica(), bpm: bpmEn(tiempoMusica()), sonando: !!sonando(),
+    anillos: s && s.nAnillos, anillo: s && s.anillo, R: R.map(r => Math.round(r)), inv: s && s.inv.slice(), efectos: s && {...s.efectos},
+    obs: s && s.obs.length, pickup: s && s.pickup && s.pickup.tipo, cam: s && +s.cam.toFixed(2), tGame: s && +s.t.toFixed(1)});
+  window.kuririTruco = {saltarA: t => { s.t = t; }, dar: tipo => { s.inv.push(tipo); pintarHabilidades(); }, escudo: () => { s.efectos.escudo = 999; }, estado: () => s};
+}
 $('jugar').addEventListener('click', () => intentarEmpezar(false));
 $('verIntro').addEventListener('click', () => intentarEmpezar(true));
 $('saltar').addEventListener('click', () => { if (intro && !intro.obligatoria) terminarIntro(); });
